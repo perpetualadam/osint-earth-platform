@@ -217,15 +217,16 @@ async function loadDataLayers(viewer, layers, dsRef) {
         const icon = EVENT_ICONS[evType] || EVENT_ICONS.news;
 
         ds.entities.add(new Entity({
-          position: Cartesian3.fromDegrees(lng, lat),
+          position: Cartesian3.fromDegrees(lng, lat, 0),
           billboard: {
             image: icon,
-            width: 24,
-            height: 24,
-            verticalOrigin: VerticalOrigin.CENTER,
+            width: 28,
+            height: 28,
+            verticalOrigin: VerticalOrigin.BOTTOM,
             horizontalOrigin: HorizontalOrigin.CENTER,
-            heightReference: HeightReference.CLAMP_TO_GROUND,
-            scaleByDistance: new NearFarScalar(5e3, 1.6, 2e7, 0.6),
+            heightReference: HeightReference.NONE,
+            scaleByDistance: new NearFarScalar(5e3, 1.8, 2e7, 0.7),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
           properties: { ...props, _layerType: "events" },
         }));
@@ -251,15 +252,16 @@ async function loadDataLayers(viewer, layers, dsRef) {
         const props = f.properties || {};
 
         ds.entities.add(new Entity({
-          position: Cartesian3.fromDegrees(lng, lat),
+          position: Cartesian3.fromDegrees(lng, lat, 0),
           billboard: {
             image: WEBCAM_SVG,
-            width: 18,
-            height: 18,
-            verticalOrigin: VerticalOrigin.CENTER,
+            width: 20,
+            height: 20,
+            verticalOrigin: VerticalOrigin.BOTTOM,
             horizontalOrigin: HorizontalOrigin.CENTER,
-            heightReference: HeightReference.CLAMP_TO_GROUND,
-            scaleByDistance: new NearFarScalar(5e3, 1.4, 2e7, 0.5),
+            heightReference: HeightReference.NONE,
+            scaleByDistance: new NearFarScalar(5e3, 1.6, 2e7, 0.5),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
           properties: { ...props, _layerType: "webcams" },
         }));
@@ -321,8 +323,9 @@ function updateLiveEntities(viewer, type, geojson) {
         rotation: CesiumMath.toRadians(-(heading || 0)),
         verticalOrigin: VerticalOrigin.CENTER,
         horizontalOrigin: HorizontalOrigin.CENTER,
-        heightReference: isAircraft ? HeightReference.NONE : HeightReference.CLAMP_TO_GROUND,
+        heightReference: HeightReference.NONE,
         scaleByDistance: new NearFarScalar(5e3, 1.4, 2e7, 0.5),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },
       properties: props,
     });

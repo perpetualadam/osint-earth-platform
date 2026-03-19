@@ -21,6 +21,14 @@ CAMEO_CONFLICT = {
     "20": "conflict",
 }
 
+CAMEO_NEWS = {
+    "01": "news", "02": "news", "03": "news", "04": "news", "05": "news",
+    "06": "news", "07": "news", "08": "news", "09": "news", "10": "news",
+    "11": "news", "12": "news", "13": "news", "16": "news",
+}
+
+NEWS_MIN_MENTIONS = 5
+
 GDELT_CACHE_FILE = os.path.join(os.path.dirname(__file__), ".gdelt_last_url")
 GDELT_MIN_INTERVAL_SECS = 900  # 15 minutes minimum between fetches
 GDELT_MAX_REQUESTS_PER_HOUR = 4
@@ -116,8 +124,21 @@ class EventWorker(BaseWorker):
                             if len(row) < 58:
                                 continue
                             root_code = row[28].strip() if row[28] else ""
+
                             event_type = CAMEO_CONFLICT.get(root_code)
+                            is_news = False
                             if not event_type:
+                                event_type = CAMEO_NEWS.get(root_code)
+                                is_news = True
+                            if not event_type:
+                                continue
+
+                            try:
+                                num_mentions = int(row[31].strip()) if row[31].strip() else 1
+                            except (ValueError, IndexError):
+                                num_mentions = 1
+
+                            if is_news and num_mentions < NEWS_MIN_MENTIONS:
                                 continue
 
                             try:
@@ -133,7 +154,6 @@ class EventWorker(BaseWorker):
                             date_str = row[1].strip() if row[1] else ""
                             source_url = (row[60].strip() if len(row) > 60 and row[60] else "")[:500]
                             goldstein = row[30].strip() if row[30].strip() else "0"
-                            num_mentions = row[31].strip() if row[31].strip() else "1"
                             geo_name = (row[52].strip() if len(row) > 52 and row[52] else "")[:200]
                             geo_country = (row[53].strip() if len(row) > 53 and row[53] else "")[:10]
 
@@ -146,7 +166,7 @@ class EventWorker(BaseWorker):
                             meta = json.dumps({
                                 "actor1": actor1, "actor2": actor2,
                                 "goldstein": float(goldstein),
-                                "mentions": int(num_mentions),
+                                "mentions": num_mentions,
                                 "url": source_url[:500],
                                 "location_name": geo_name,
                                 "country_code": geo_country,
@@ -163,7 +183,7 @@ class EventWorker(BaseWorker):
                             """, (event_type, title, lng, lat, source_url[:500], ts.isoformat(), meta))
                             total += 1
 
-        self.logger.info("Inserted %d GDELT conflict/protest events", total)
+        self.logger.info("Inserted %d GDELT events (conflict/protest/news)", total)
 
     def _fetch_acled(self):
         """Fetch conflict events from ACLED."""
