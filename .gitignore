@@ -17,6 +17,7 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Logs
 *.log
@@ -27,6 +28,7 @@ npm-debug.log*
 .idea/
 *.swp
 *.swo
+.cursor/
 
 # Docker volumes
 pgdata/
@@ -41,6 +43,10 @@ miniodata/
 .pytest_cache/
 coverage/
 .nyc_output/
+
+# Worker cache files
+.gdelt_last_url
+.owdb_cache.json
 
 # MinIO local data
 minio-data/

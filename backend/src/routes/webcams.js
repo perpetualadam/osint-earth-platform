@@ -24,6 +24,7 @@ router.get("/", async (req, res, next) => {
     const where = "WHERE " + clauses.join(" AND ");
     const sql = `
       SELECT id, name, stream_url, thumbnail_url, camera_type, source, country,
+             metadata,
              ST_AsGeoJSON(location)::json AS geometry
       FROM webcams
       ${where}
@@ -45,6 +46,7 @@ router.get("/", async (req, res, next) => {
           camera_type: r.camera_type,
           source: r.source,
           country: r.country,
+          metadata: r.metadata || {},
         },
       })),
     });

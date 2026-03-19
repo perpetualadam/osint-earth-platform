@@ -37,9 +37,11 @@ class WildfireWorker(BaseWorker):
                 frp = float(row.get("frp", 0))
                 confidence = row.get("confidence", "")
                 acq_date = row.get("acq_date", "")
-                acq_time = row.get("acq_time", "0000")
+                acq_time = str(row.get("acq_time", "0000")).zfill(4)
 
-                timestamp = f"{acq_date}T{acq_time[:2]}:{acq_time[2:]}:00Z"
+                hh = min(int(acq_time[:2]), 23)
+                mm = min(int(acq_time[2:]), 59)
+                timestamp = f"{acq_date}T{hh:02d}:{mm:02d}:00Z"
 
                 cur.execute("""
                     INSERT INTO environmental_events

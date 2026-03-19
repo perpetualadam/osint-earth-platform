@@ -16,11 +16,16 @@ export const api = {
 
   getEventTimeline: (id) => fetchJSON(`${BASE}/api/events/${id}/timeline`),
 
+  getEventNews: (id) => fetchJSON(`${BASE}/api/events/${id}/news`),
+
   getTilesAvailable: (params) =>
     fetchJSON(`${BASE}/api/tiles/available?${new URLSearchParams(params)}`),
 
   getAircraft: (params) =>
     fetchJSON(`${BASE}/api/aircraft?${new URLSearchParams(params)}`),
+
+  getAircraftType: (icao24) =>
+    fetchJSON(`${BASE}/api/aircraft/${icao24}/type`),
 
   getAircraftHistory: (icao24, params) =>
     fetchJSON(`${BASE}/api/aircraft/${icao24}/history?${new URLSearchParams(params)}`),

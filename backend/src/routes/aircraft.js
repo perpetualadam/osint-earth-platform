@@ -2,6 +2,46 @@ import { Router } from "express";
 
 const router = Router();
 
+const typeCache = new Map();
+const CACHE_TTL = 3600000; // 1 hour
+
+const MILITARY_KEYWORDS = [
+  "air force", "navy", "army", "marines", "military", "defence", "defense",
+  "ministry of", "royal air", "luftwaffe", "aeronautica militare",
+  "fuerza aerea", "força aérea", "armée de l'air", "coast guard",
+  "national guard", "indian air force", "raaf", "raf ", "usaf",
+  "israeli air", "plaaf", "jasdf", "rokaf",
+];
+const GOV_KEYWORDS = [
+  "government", "police", "gendarmerie", "border", "customs",
+  "fire service", "ambulance", "rescue", "medevac", "nato",
+  "federal aviation", "dept of", "department of",
+];
+const COMMERCIAL_KEYWORDS = [
+  "airlines", "airways", "air lines", "aviation", "cargo", "express",
+  "transport", "freight", "jet", "flying", "aero", "wing",
+];
+
+function classifyAircraft(operator, icaoType, registration) {
+  const op = (operator || "").toLowerCase();
+  if (!op) return "Unknown";
+  for (const kw of MILITARY_KEYWORDS) {
+    if (op.includes(kw)) return "Military";
+  }
+  for (const kw of GOV_KEYWORDS) {
+    if (op.includes(kw)) return "Government";
+  }
+  const isLikelyAirline = COMMERCIAL_KEYWORDS.some((kw) => op.includes(kw));
+  if (isLikelyAirline) return "Commercial";
+  if (op.includes("llc") || op.includes("inc") || op.includes("ltd") ||
+      op.includes("trust") || op.includes("leasing") || op.includes("bank")) {
+    return "Private";
+  }
+  const hasPersonName = op.split(/\s+/).length <= 3 && !op.includes(",");
+  if (hasPersonName && !isLikelyAirline) return "Private";
+  return "Commercial";
+}
+
 router.get("/", async (req, res, next) => {
   try {
     const { pool } = req.app.locals;
@@ -30,6 +70,7 @@ router.get("/", async (req, res, next) => {
       SELECT DISTINCT ON (icao24)
              icao24, callsign, origin, destination,
              altitude, velocity, heading, on_ground, recorded_at,
+             origin_country, category, vertical_rate, squawk,
              ST_AsGeoJSON(location)::json AS geometry
       FROM aircraft_tracks
       ${where}
@@ -53,11 +94,52 @@ router.get("/", async (req, res, next) => {
           heading: r.heading,
           on_ground: r.on_ground,
           recorded_at: r.recorded_at,
+          origin_country: r.origin_country || "",
+          category: r.category || "",
+          vertical_rate: r.vertical_rate,
+          squawk: r.squawk || "",
         },
       })),
     });
   } catch (err) {
     next(err);
+  }
+});
+
+router.get("/:icao24/type", async (req, res, next) => {
+  try {
+    const icao24 = req.params.icao24.toLowerCase();
+    const cached = typeCache.get(icao24);
+    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+      return res.json(cached.data);
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const resp = await fetch(`https://hexdb.io/api/v1/aircraft/${icao24}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!resp.ok) {
+      return res.json({ icao24, error: "not_found" });
+    }
+    const data = await resp.json();
+    const operator = data.RegisteredOwners || "";
+    const result = {
+      icao24,
+      registration: data.Registration || "",
+      manufacturer: data.Manufacturer || "",
+      type: data.Type || "",
+      icao_type: data.ICAOTypeCode || "",
+      operator,
+      usage: classifyAircraft(operator, data.ICAOTypeCode || "", data.Registration || ""),
+    };
+    typeCache.set(icao24, { data: result, ts: Date.now() });
+    res.json(result);
+  } catch (err) {
+    res.json({ icao24: req.params.icao24, error: "lookup_failed" });
   }
 });
 

@@ -14,6 +14,7 @@ export default function App() {
   const viewerRef = useRef(null);
   const selectedEvent = useStore((s) => s.selectedEvent);
   const showOffline = useStore((s) => s.showOfflinePanel);
+  const webcamsOn = useStore((s) => s.layers.webcams);
 
   return (
     <div className="app">
@@ -29,6 +30,12 @@ export default function App() {
           <GlobeViewer ref={viewerRef} />
           <TimelineBar viewerRef={viewerRef} />
           <ReplayControls viewerRef={viewerRef} />
+          {webcamsOn && (
+            <div className="app-attribution">
+              Webcam data powered by{" "}
+              <a href="https://openwebcamdb.com" target="_blank" rel="noopener noreferrer">OpenWebcamDB.com</a>
+            </div>
+          )}
         </main>
 
         {selectedEvent && <EventPanel />}

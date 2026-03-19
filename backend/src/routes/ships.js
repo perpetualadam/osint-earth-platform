@@ -18,7 +18,7 @@ router.get("/", async (req, res, next) => {
 
     const live = req.query.live !== "false";
     if (live) {
-      clauses.push(`recorded_at >= NOW() - INTERVAL '5 minutes'`);
+      clauses.push(`recorded_at >= NOW() - INTERVAL '30 minutes'`);
     } else {
       if (req.query.time_start) { clauses.push(`recorded_at >= $${i++}`); params.push(req.query.time_start); }
       if (req.query.time_end)   { clauses.push(`recorded_at <= $${i++}`); params.push(req.query.time_end); }
@@ -29,7 +29,7 @@ router.get("/", async (req, res, next) => {
     const sql = `
       SELECT DISTINCT ON (mmsi)
              mmsi, vessel_name, vessel_type, speed, course, heading,
-             nav_status, recorded_at,
+             nav_status, destination, callsign, imo, recorded_at,
              ST_AsGeoJSON(location)::json AS geometry
       FROM ship_tracks
       ${where}
@@ -51,6 +51,9 @@ router.get("/", async (req, res, next) => {
           course: r.course,
           heading: r.heading,
           nav_status: r.nav_status,
+          destination: r.destination || "",
+          callsign: r.callsign || "",
+          imo: r.imo || "",
           recorded_at: r.recorded_at,
         },
       })),

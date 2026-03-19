@@ -2,30 +2,50 @@ import React, { useEffect, useState } from "react";
 import { useStore } from "../hooks/useStore";
 import { processSyncQueue } from "../services/offlineManager";
 
+async function checkConnectivity() {
+  try {
+    const r = await fetch("/api/health", { method: "GET", cache: "no-store" });
+    return r.ok;
+  } catch {
+    return navigator.onLine;
+  }
+}
+
 export default function ConnectionStatus() {
   const isOnline = useStore((s) => s.isOnline);
   const setOnline = useStore((s) => s.setOnline);
   const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
+    checkConnectivity().then(setOnline);
+
     const onOnline = async () => {
-      setOnline(true);
-      setSyncing(true);
-      try {
-        const synced = await processSyncQueue();
-        if (synced > 0) console.log(`Synced ${synced} offline actions`);
-      } catch (e) {
-        console.warn("Sync queue processing failed:", e);
+      const real = await checkConnectivity();
+      setOnline(real);
+      if (real) {
+        setSyncing(true);
+        try {
+          const synced = await processSyncQueue();
+          if (synced > 0) console.log(`Synced ${synced} offline actions`);
+        } catch (e) {
+          console.warn("Sync queue processing failed:", e);
+        }
+        setSyncing(false);
       }
-      setSyncing(false);
     };
     const onOffline = () => setOnline(false);
 
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
+
+    const interval = setInterval(() => {
+      checkConnectivity().then(setOnline);
+    }, 30_000);
+
     return () => {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
+      clearInterval(interval);
     };
   }, [setOnline]);
 

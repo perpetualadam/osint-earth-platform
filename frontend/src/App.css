@@ -35,4 +35,23 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-attribution {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.6);
+  background: rgba(0,0,0,0.5);
+  padding: 2px 6px;
+  border-radius: 3px;
+  z-index: 10;
+  pointer-events: auto;
+}
+.app-attribution a {
+  color: #10b981;
+  text-decoration: underline;
 }

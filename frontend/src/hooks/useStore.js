@@ -8,7 +8,7 @@ export const useStore = create((set) => ({
     ships: true,
     wildfires: true,
     earthquakes: true,
-    webcams: false,
+    webcams: true,
     events: true,
     anomalies: true,
     heatmap_fires: false,

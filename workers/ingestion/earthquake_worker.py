@@ -59,4 +59,4 @@ class EarthquakeWorker(BaseWorker):
 
     def _recent_window(self):
         from datetime import datetime, timedelta, timezone
-        return (datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+        return (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")

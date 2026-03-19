@@ -4,8 +4,8 @@ import { getCacheStats } from "../services/localDb";
 
 const LAYER_GROUPS = [
   {
-    label: "Imagery",
-    layers: [{ key: "satellite", label: "Satellite Imagery", cacheField: null }],
+    label: "Base Map",
+    layers: [{ key: "satellite", label: "Satellite View", cacheField: null }],
   },
   {
     label: "Tracking",
@@ -64,8 +64,8 @@ export default function LayerManager() {
     <aside className="layer-manager panel">
       <div className="lm-header">
         <h2 className="lm-title">Layers</h2>
-        <button className="lm-offline-btn" onClick={toggleOffline} title="Offline Areas">
-          Offline
+        <button className="lm-offline-btn" onClick={toggleOffline} title="Manage saved offline areas">
+          &#128190; Saved
         </button>
       </div>
 
@@ -79,7 +79,14 @@ export default function LayerManager() {
                 checked={layers[l.key]}
                 onChange={() => toggle(l.key)}
               />
-              <span className="lm-layer-name">{l.label}</span>
+              <span className="lm-layer-name">
+                {l.label}
+                {l.key === "satellite" && (
+                  <span className="lm-hint">
+                    {layers.satellite ? "(on)" : "(street map)"}
+                  </span>
+                )}
+              </span>
               {!isOnline && hasCachedData(l.cacheField) && (
                 <span className="lm-cached-badge" title="Cached data available offline">
                   cached
@@ -136,6 +143,7 @@ export default function LayerManager() {
         }
         .lm-layer input { accent-color: var(--accent); }
         .lm-layer-name { flex: 1; }
+        .lm-hint { font-size: 10px; color: var(--text-secondary); margin-left: 4px; }
         .lm-cached-badge {
           font-size: 9px;
           padding: 1px 5px;
