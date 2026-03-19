@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.venv/
+*.egg-info/
+
+# Build output
+dist/
+build/
+*.pyc
+__pycache__/
+
+# Environment & secrets
+.env
+.env.local
+.env.production
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker volumes
+pgdata/
+redisdata/
+miniodata/
+
+# AI model weights (auto-downloaded at runtime)
+*.pt
+*.onnx
+
+# Test & cache
+.pytest_cache/
+coverage/
+.nyc_output/
+
+# MinIO local data
+minio-data/
