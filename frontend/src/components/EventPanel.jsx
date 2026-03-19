@@ -77,15 +77,19 @@ function EventDetail({ data, onClose, snapshots, openGallery }) {
   const label = (data.event_type || "event").replace(/^\w/, (c) => c.toUpperCase());
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
+  const [newsLangs, setNewsLangs] = useState("english");
+  const [newsTranslate, setNewsTranslate] = useState(false);
 
   useEffect(() => {
     if (!data.id) return;
     setNewsLoading(true);
-    api.getEventNews(data.id)
+    const params = { langs: newsLangs };
+    if (newsTranslate) params.translate = "true";
+    api.getEventNews(data.id, params)
       .then((d) => setNews(d.articles || []))
       .catch(() => setNews([]))
       .finally(() => setNewsLoading(false));
-  }, [data.id]);
+  }, [data.id, newsLangs, newsTranslate]);
 
   return (
     <aside className="event-panel panel">
@@ -113,6 +117,22 @@ function EventDetail({ data, onClose, snapshots, openGallery }) {
         </a>
       )}
 
+      <div className="ep-news-options">
+        <label>
+          <span>Languages:</span>
+          <select value={newsLangs} onChange={(e) => setNewsLangs(e.target.value)}>
+            <option value="english">English only</option>
+            <option value="english,spanish">English + Spanish</option>
+            <option value="english,spanish,french">English + Spanish + French</option>
+            <option value="english,spanish,french,arabic">+ Arabic</option>
+            <option value="english,spanish,french,german,chinese,russian">All major</option>
+          </select>
+        </label>
+        <label>
+          <input type="checkbox" checked={newsTranslate} onChange={(e) => setNewsTranslate(e.target.checked)} />
+          Translate to English
+        </label>
+      </div>
       {newsLoading && <p className="ep-news-loading">Loading related news...</p>}
       {news.length > 0 && (
         <div className="ep-news-section">
@@ -121,8 +141,11 @@ function EventDetail({ data, onClose, snapshots, openGallery }) {
             <a key={i} href={article.url} target="_blank" rel="noopener noreferrer" className="ep-news-card">
               {article.image && <img src={article.image} alt="" className="ep-news-img" onError={(e) => e.target.style.display = "none"} />}
               <div className="ep-news-text">
-                <span className="ep-news-title">{article.title}</span>
-                <span className="ep-news-domain">{article.domain}</span>
+                <span className="ep-news-title">{article.titleTranslated || article.title}</span>
+                {article.titleTranslated && article.title !== article.titleTranslated && (
+                  <span className="ep-news-original" title={article.title}>{article.title}</span>
+                )}
+                <span className="ep-news-domain">{article.domain}{article.language ? ` (${article.language})` : ""}</span>
               </div>
             </a>
           ))}
@@ -376,6 +399,29 @@ export default function EventPanel() {
           font-size: 12px;
           line-height: 1.5;
           margin-bottom: 12px;
+        }
+        .ep-news-options {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-bottom: 10px;
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        .ep-news-options label { display: flex; align-items: center; gap: 6px; }
+        .ep-news-options select {
+          padding: 4px 8px;
+          border-radius: 4px;
+          background: var(--bg-hover);
+          color: var(--text-primary);
+          border: 1px solid var(--border);
+        }
+        .ep-news-original {
+          display: block;
+          font-size: 10px;
+          color: var(--text-secondary);
+          margin-top: 2px;
+          font-style: italic;
         }
         .ep-news-loading {
           font-size: 11px;

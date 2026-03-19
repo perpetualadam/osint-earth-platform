@@ -16,7 +16,8 @@ export const api = {
 
   getEventTimeline: (id) => fetchJSON(`${BASE}/api/events/${id}/timeline`),
 
-  getEventNews: (id) => fetchJSON(`${BASE}/api/events/${id}/news`),
+  getEventNews: (id, params) =>
+    fetchJSON(`${BASE}/api/events/${id}/news${params && Object.keys(params).length ? `?${new URLSearchParams(params)}` : ""}`),
 
   getTilesAvailable: (params) =>
     fetchJSON(`${BASE}/api/tiles/available?${new URLSearchParams(params)}`),

@@ -10,6 +10,7 @@ describe("useStore", () => {
     useStore.setState({
       layers: {
         satellite: true,
+        viirs: false,
         aircraft: true,
         ships: true,
         wildfires: true,

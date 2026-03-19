@@ -7,6 +7,8 @@ import {
   ScreenSpaceEventType,
   defined,
   UrlTemplateImageryProvider,
+  WebMapTileServiceImageryProvider,
+  WebMercatorTilingScheme,
   CustomDataSource,
   Color,
   Credit,
@@ -25,24 +27,26 @@ import { socket } from "../services/socket";
 
 const ESRI_CREDIT = new Credit("Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics");
 const OSM_CREDIT = new Credit("&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>");
+const NASA_GIBS_CREDIT = new Credit("&copy; <a href='https://earthdata.nasa.gov/gibs'>NASA GIBS</a>");
 
+/* Cesium billboards require rgb() not hex in SVGs - hex causes black rendering */
 const PLANE_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
   <path d="M16 2 L19 12 L28 14 L19 16 L19 26 L16 24 L13 26 L13 16 L4 14 L13 12 Z"
-        fill="%2300e5ff" stroke="%23004d5e" stroke-width="0.8"/>
+        fill="rgb(0,229,255)" stroke="rgb(0,77,94)" stroke-width="0.8"/>
 </svg>`)}`;
 
 const SHIP_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
   <path d="M12 2 L16 10 L20 18 L12 15 L4 18 L8 10 Z"
-        fill="%23ffd600" stroke="%23665500" stroke-width="0.8"/>
+        fill="rgb(255,214,0)" stroke="rgb(102,85,0)" stroke-width="0.8"/>
 </svg>`)}`;
 
-const WEBCAM_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="%2310b981" stroke="%23fff" stroke-width="1.5"/><circle cx="10" cy="9" r="3" fill="white"/><rect x="8" y="13" width="4" height="2" rx="0.5" fill="white"/></svg>`)}`;
+const WEBCAM_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="rgb(16,185,129)" stroke="rgb(255,255,255)" stroke-width="1.5"/><circle cx="10" cy="9" r="3" fill="rgb(255,255,255)"/><rect x="8" y="13" width="4" height="2" rx="0.5" fill="rgb(255,255,255)"/></svg>`)}`;
 
 const EVENT_ICONS = {
-  conflict: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="%23ef4444" stroke="%23fff" stroke-width="2"/><path d="M13 8 L15 8 L14.6 17 L13.4 17 Z" fill="white"/><circle cx="14" cy="20" r="1.3" fill="white"/></svg>`)}`,
-  protest: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="%23f97316" stroke="%23fff" stroke-width="2"/><path d="M10 20 L14 8 L18 20 Z" fill="none" stroke="white" stroke-width="2"/></svg>`)}`,
-  disaster: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><polygon points="14,2 26,24 2,24" fill="%23eab308" stroke="%23fff" stroke-width="2"/><path d="M13 10 L15 10 L14.6 18 L13.4 18 Z" fill="%23000"/><circle cx="14" cy="21" r="1.2" fill="%23000"/></svg>`)}`,
-  news: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%233b82f6" stroke="%23fff" stroke-width="1.5"/><rect x="8" y="7" width="8" height="10" rx="1" fill="none" stroke="white" stroke-width="1.5"/><line x1="10" y1="10" x2="16" y2="10" stroke="white" stroke-width="1"/><line x1="10" y1="13" x2="14" y2="13" stroke="white" stroke-width="1"/></svg>`)}`,
+  conflict: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="rgb(239,68,68)" stroke="rgb(255,255,255)" stroke-width="2"/><path d="M13 8 L15 8 L14.6 17 L13.4 17 Z" fill="rgb(255,255,255)"/><circle cx="14" cy="20" r="1.3" fill="rgb(255,255,255)"/></svg>`)}`,
+  protest: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="rgb(249,115,22)" stroke="rgb(255,255,255)" stroke-width="2"/><path d="M10 20 L14 8 L18 20 Z" fill="none" stroke="rgb(255,255,255)" stroke-width="2"/></svg>`)}`,
+  disaster: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><polygon points="14,2 26,24 2,24" fill="rgb(234,179,8)" stroke="rgb(255,255,255)" stroke-width="2"/><path d="M13 10 L15 10 L14.6 18 L13.4 18 Z" fill="rgb(0,0,0)"/><circle cx="14" cy="21" r="1.2" fill="rgb(0,0,0)"/></svg>`)}`,
+  news: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="rgb(59,130,246)" stroke="rgb(255,255,255)" stroke-width="1.5"/><rect x="8" y="7" width="8" height="10" rx="1" fill="none" stroke="rgb(255,255,255)" stroke-width="1.5"/><line x1="10" y1="10" x2="16" y2="10" stroke="rgb(255,255,255)" stroke-width="1"/><line x1="10" y1="13" x2="14" y2="13" stroke="rgb(255,255,255)" stroke-width="1"/></svg>`)}`,
 };
 
 function createSatelliteProvider() {
@@ -69,6 +73,25 @@ function createStreetProvider() {
   });
 }
 
+/** VIIRS True Color from NASA GIBS - NRT within ~3.5h. Use date 1–2 days ago for reliability. */
+function createVIIRSProvider() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const dateStr = d.toISOString().slice(0, 10);
+  return new WebMapTileServiceImageryProvider({
+    url: `https://gibs.earthdata.nasa.gov/wmts/epsg3857/all/wmts.cgi?TIME=${dateStr}`,
+    layer: "VIIRS_SNPP_CorrectedReflectance_TrueColor_v2_NRT",
+    style: "",
+    format: "image/jpeg",
+    tileMatrixSetID: "GoogleMapsCompatible_Level9",
+    maximumLevel: 9,
+    tileWidth: 256,
+    tileHeight: 256,
+    tilingScheme: new WebMercatorTilingScheme(),
+    credit: NASA_GIBS_CREDIT,
+  });
+}
+
 function removeDS(viewer, dsRef, key) {
   const ds = dsRef.current[key];
   if (ds) {
@@ -80,7 +103,7 @@ function removeDS(viewer, dsRef, key) {
 const GlobeViewer = forwardRef((_props, ref) => {
   const containerRef = useRef(null);
   const viewerRef = useRef(null);
-  const imageryRef = useRef({ satellite: null, labels: null, street: null });
+  const imageryRef = useRef({ satellite: null, labels: null, street: null, viirs: null });
   const dsRef = useRef({});
 
   const layers = useStore((s) => s.layers);
@@ -182,8 +205,32 @@ const GlobeViewer = forwardRef((_props, ref) => {
 
   useEffect(() => {
     const viewer = viewerRef.current;
+    const img = imageryRef.current;
+    if (!viewer || viewer.isDestroyed() || !img.satellite) return;
+
+    if (layers.viirs) {
+      if (!img.viirs) {
+        try {
+          img.viirs = viewer.imageryLayers.addImageryProvider(createVIIRSProvider());
+        } catch (e) {
+          console.warn("VIIRS layer failed to load", e);
+        }
+      }
+      if (img.viirs) img.viirs.show = true;
+    } else {
+      if (img.viirs) {
+        viewer.imageryLayers.remove(img.viirs, true);
+        img.viirs = null;
+      }
+    }
+  }, [layers.viirs]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed()) return;
-    loadDataLayers(viewer, layers, dsRef);
+    let cancelled = false;
+    loadDataLayers(viewer, layers, dsRef, () => cancelled);
+    return () => { cancelled = true; };
   }, [layers]);
 
   useEffect(() => {
@@ -206,10 +253,13 @@ const GlobeViewer = forwardRef((_props, ref) => {
   return <div ref={containerRef} style={{ flex: 1, width: "100%", height: "100%" }} />;
 });
 
-async function loadDataLayers(viewer, layers, dsRef) {
+async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false) {
+  const guard = () => viewer && !viewer.isDestroyed() && !isCancelled();
+
   if (layers.events) {
     try {
       const geojson = await offlineApi.getEvents({ limit: 2000 });
+      if (!guard()) return;
       removeDS(viewer, dsRef, "events");
 
       const ds = new CustomDataSource("events");
@@ -238,16 +288,18 @@ async function loadDataLayers(viewer, layers, dsRef) {
           properties: { ...props, _layerType: "events" },
         });
       }
+      if (!guard()) return;
       await viewer.dataSources.add(ds);
       dsRef.current.events = ds;
     } catch (e) { console.warn("Events load failed", e); }
   } else {
-    removeDS(viewer, dsRef, "events");
+    if (guard()) removeDS(viewer, dsRef, "events");
   }
 
   if (layers.webcams) {
     try {
       const geojson = await api.getWebcams({});
+      if (!guard()) return;
       removeDS(viewer, dsRef, "webcams");
 
       const ds = new CustomDataSource("webcams");
@@ -272,30 +324,31 @@ async function loadDataLayers(viewer, layers, dsRef) {
           properties: { ...props, _layerType: "webcams" },
         });
       }
+      if (!guard()) return;
       await viewer.dataSources.add(ds);
       dsRef.current.webcams = ds;
     } catch (e) { console.warn("Webcams load failed", e); }
   } else {
-    removeDS(viewer, dsRef, "webcams");
+    if (guard()) removeDS(viewer, dsRef, "webcams");
   }
 
   if (layers.ships && !dsRef.current.ships) {
     try {
       const geojson = await api.getShips({ live: "false" });
-      if (geojson.features?.length) loadTracking(viewer, dsRef, "ships", geojson);
+      if (guard() && geojson.features?.length) loadTracking(viewer, dsRef, "ships", geojson);
     } catch (e) { console.warn("Ships initial load failed", e); }
   }
-  if (!layers.ships) removeDS(viewer, dsRef, "ships");
+  if (!layers.ships && guard()) removeDS(viewer, dsRef, "ships");
 
   if (layers.aircraft && !dsRef.current.aircraft) {
     try {
       const geojson = await api.getAircraft({ live: "false" });
-      if (geojson.features?.length) loadTracking(viewer, dsRef, "aircraft", geojson);
+      if (guard() && geojson.features?.length) loadTracking(viewer, dsRef, "aircraft", geojson);
     } catch (e) { console.warn("Aircraft initial load failed", e); }
   }
-  if (!layers.aircraft) removeDS(viewer, dsRef, "aircraft");
+  if (!layers.aircraft && guard()) removeDS(viewer, dsRef, "aircraft");
 
-  viewer.scene.requestRender();
+  if (guard()) viewer.scene.requestRender();
 }
 
 function loadTracking(viewer, dsRef, type, geojson) {

@@ -5,7 +5,10 @@ import { getCacheStats } from "../services/localDb";
 const LAYER_GROUPS = [
   {
     label: "Base Map",
-    layers: [{ key: "satellite", label: "Satellite View", cacheField: null }],
+    layers: [
+      { key: "satellite", label: "Satellite View", cacheField: null },
+      { key: "viirs", label: "VIIRS True Color", cacheField: null },
+    ],
   },
   {
     label: "Tracking",
@@ -83,7 +86,7 @@ export default function LayerManager() {
                 {l.label}
                 {l.key === "satellite" && (
                   <span className="lm-hint">
-                    {layers.satellite ? "(on)" : "(street map)"}
+                    {layers.satellite ? "(satellite imagery)" : "(street map)"}
                   </span>
                 )}
               </span>

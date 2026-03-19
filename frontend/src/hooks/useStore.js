@@ -4,6 +4,7 @@ export const useStore = create((set) => ({
   // Layer visibility
   layers: {
     satellite: true,
+    viirs: false,
     aircraft: true,
     ships: true,
     wildfires: true,
