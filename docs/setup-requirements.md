@@ -40,7 +40,7 @@ Everything needed to run the OSINT Earth Platform locally and deploy it online.
 | **OPENSKY_USERNAME** | OpenSky Network | Free | Aircraft worker (higher rate limits) | Register at https://opensky-network.org/index.php/login |
 | **OPENSKY_PASSWORD** | OpenSky Network | Free | Aircraft worker | Same as above |
 | **WINDY_API_KEY** | Windy.com | Free (1000 req/day) | Webcam worker | https://api.windy.com |
-| **VITE_CESIUM_ION_TOKEN** | Cesium Ion | Free (75K tiles/month) | 3D terrain rendering | Register at https://ion.cesium.com/tokens |
+| **VITE_CESIUM_ION_TOKEN** | Cesium Ion | Free (75K tiles/month) | 3D terrain, Sentinel-2 imagery | Register at https://ion.cesium.com/tokens. For Sentinel-2 layer: add asset 3954 at https://cesium.com/ion/assetdepot/3954 |
 
 ### Optional (Unlock Additional Data)
 

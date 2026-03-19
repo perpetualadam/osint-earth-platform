@@ -7,8 +7,7 @@ import {
   ScreenSpaceEventType,
   defined,
   UrlTemplateImageryProvider,
-  WebMapTileServiceImageryProvider,
-  WebMercatorTilingScheme,
+  IonImageryProvider,
   CustomDataSource,
   Color,
   Credit,
@@ -27,7 +26,6 @@ import { socket } from "../services/socket";
 
 const ESRI_CREDIT = new Credit("Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics");
 const OSM_CREDIT = new Credit("&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>");
-const NASA_GIBS_CREDIT = new Credit("&copy; <a href='https://earthdata.nasa.gov/gibs'>NASA GIBS</a>");
 
 /* Cesium billboards require rgb() not hex in SVGs - hex causes black rendering */
 const PLANE_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
@@ -73,25 +71,6 @@ function createStreetProvider() {
   });
 }
 
-/** VIIRS True Color from NASA GIBS - NRT within ~3.5h. Use date 1–2 days ago for reliability. */
-function createVIIRSProvider() {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  const dateStr = d.toISOString().slice(0, 10);
-  return new WebMapTileServiceImageryProvider({
-    url: `https://gibs.earthdata.nasa.gov/wmts/epsg3857/all/wmts.cgi?TIME=${dateStr}`,
-    layer: "VIIRS_SNPP_CorrectedReflectance_TrueColor_v2_NRT",
-    style: "",
-    format: "image/jpeg",
-    tileMatrixSetID: "GoogleMapsCompatible_Level9",
-    maximumLevel: 9,
-    tileWidth: 256,
-    tileHeight: 256,
-    tilingScheme: new WebMercatorTilingScheme(),
-    credit: NASA_GIBS_CREDIT,
-  });
-}
-
 function removeDS(viewer, dsRef, key) {
   const ds = dsRef.current[key];
   if (ds) {
@@ -103,7 +82,7 @@ function removeDS(viewer, dsRef, key) {
 const GlobeViewer = forwardRef((_props, ref) => {
   const containerRef = useRef(null);
   const viewerRef = useRef(null);
-  const imageryRef = useRef({ satellite: null, labels: null, street: null, viirs: null });
+  const imageryRef = useRef({ satellite: null, labels: null, street: null, sentinel2: null });
   const dsRef = useRef({});
 
   const layers = useStore((s) => s.layers);
@@ -207,23 +186,35 @@ const GlobeViewer = forwardRef((_props, ref) => {
     const viewer = viewerRef.current;
     const img = imageryRef.current;
     if (!viewer || viewer.isDestroyed() || !img.satellite) return;
+    const hasIon = !!import.meta.env.VITE_CESIUM_ION_TOKEN;
 
-    if (layers.viirs) {
-      if (!img.viirs) {
-        try {
-          img.viirs = viewer.imageryLayers.addImageryProvider(createVIIRSProvider());
-        } catch (e) {
-          console.warn("VIIRS layer failed to load", e);
-        }
+    if (layers.sentinel2 && hasIon) {
+      if (!img.sentinel2) {
+        IonImageryProvider.fromAssetId(3954)
+          .then((provider) => {
+            if (!useStore.getState().layers.sentinel2) return;
+            const v = viewerRef.current;
+            if (v && !v.isDestroyed()) {
+              img.sentinel2 = v.imageryLayers.addImageryProvider(provider);
+              img.sentinel2.show = true;
+            }
+          })
+          .catch((e) => {
+            console.warn(
+              "Sentinel-2 layer failed. Add the asset to your Cesium Ion account: https://cesium.com/ion/assetdepot/3954",
+              e
+            );
+          });
+      } else {
+        img.sentinel2.show = true;
       }
-      if (img.viirs) img.viirs.show = true;
     } else {
-      if (img.viirs) {
-        viewer.imageryLayers.remove(img.viirs, true);
-        img.viirs = null;
+      if (img.sentinel2) {
+        viewer.imageryLayers.remove(img.sentinel2, true);
+        img.sentinel2 = null;
       }
     }
-  }, [layers.viirs]);
+  }, [layers.sentinel2]);
 
   useEffect(() => {
     const viewer = viewerRef.current;

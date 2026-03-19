@@ -7,7 +7,7 @@ const LAYER_GROUPS = [
     label: "Base Map",
     layers: [
       { key: "satellite", label: "Satellite View", cacheField: null },
-      { key: "viirs", label: "VIIRS True Color", cacheField: null },
+      { key: "sentinel2", label: "Sentinel-2 (ESA)", cacheField: null, requiresIon: true },
     ],
   },
   {
@@ -43,6 +43,8 @@ const LAYER_GROUPS = [
   },
 ];
 
+const hasIonToken = !!import.meta.env.VITE_CESIUM_ION_TOKEN;
+
 export default function LayerManager() {
   const layers = useStore((s) => s.layers);
   const toggle = useStore((s) => s.toggleLayer);
@@ -75,8 +77,14 @@ export default function LayerManager() {
       {LAYER_GROUPS.map((group) => (
         <div key={group.label} className="lm-group">
           <h3 className="lm-group-label">{group.label}</h3>
-          {group.layers.map((l) => (
-            <label key={l.key} className="lm-layer">
+          {group.layers
+            .filter((l) => !l.requiresIon || hasIonToken)
+            .map((l) => (
+              <label
+                key={l.key}
+                className="lm-layer"
+                title={l.key === "sentinel2" ? "Add asset 3954 to your Cesium Ion account first: ion.cesium.com/assetdepot" : undefined}
+              >
               <input
                 type="checkbox"
                 checked={layers[l.key]}
