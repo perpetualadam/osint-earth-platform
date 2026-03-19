@@ -7,7 +7,7 @@ import {
   ScreenSpaceEventType,
   defined,
   UrlTemplateImageryProvider,
-  GeoJsonDataSource,
+  CustomDataSource,
   Color,
   Credit,
   Entity,
@@ -36,13 +36,13 @@ const SHIP_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://ww
         fill="%23ffd600" stroke="%23665500" stroke-width="0.8"/>
 </svg>`)}`;
 
-const WEBCAM_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="%2310b981" stroke="%23fff" stroke-width="1.2"/><circle cx="10" cy="9" r="3" fill="white"/><rect x="8" y="13" width="4" height="2" rx="0.5" fill="white"/></svg>`)}`;
+const WEBCAM_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="%2310b981" stroke="%23fff" stroke-width="1.5"/><circle cx="10" cy="9" r="3" fill="white"/><rect x="8" y="13" width="4" height="2" rx="0.5" fill="white"/></svg>`)}`;
 
 const EVENT_ICONS = {
-  conflict: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23ef4444" stroke="%23fff" stroke-width="1.5"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="14" font-weight="bold">!</text></svg>`)}`,
-  protest: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23f97316" stroke="%23fff" stroke-width="1.5"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12" font-weight="bold">P</text></svg>`)}`,
-  disaster: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><polygon points="12,2 22,20 2,20" fill="%23eab308" stroke="%23fff" stroke-width="1.5"/><text x="12" y="18" text-anchor="middle" fill="black" font-size="12" font-weight="bold">!</text></svg>`)}`,
-  news: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="%233b82f6" stroke="%23fff" stroke-width="1.2"/><text x="10" y="14" text-anchor="middle" fill="white" font-size="10" font-weight="bold">N</text></svg>`)}`,
+  conflict: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="%23ef4444" stroke="%23fff" stroke-width="2"/><path d="M13 8 L15 8 L14.6 17 L13.4 17 Z" fill="white"/><circle cx="14" cy="20" r="1.3" fill="white"/></svg>`)}`,
+  protest: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="%23f97316" stroke="%23fff" stroke-width="2"/><path d="M10 20 L14 8 L18 20 Z" fill="none" stroke="white" stroke-width="2"/></svg>`)}`,
+  disaster: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><polygon points="14,2 26,24 2,24" fill="%23eab308" stroke="%23fff" stroke-width="2"/><path d="M13 10 L15 10 L14.6 18 L13.4 18 Z" fill="%23000"/><circle cx="14" cy="21" r="1.2" fill="%23000"/></svg>`)}`,
+  news: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%233b82f6" stroke="%23fff" stroke-width="1.5"/><rect x="8" y="7" width="8" height="10" rx="1" fill="none" stroke="white" stroke-width="1.5"/><line x1="10" y1="10" x2="16" y2="10" stroke="white" stroke-width="1"/><line x1="10" y1="13" x2="14" y2="13" stroke="white" stroke-width="1"/></svg>`)}`,
 };
 
 function createSatelliteProvider() {
@@ -69,11 +69,19 @@ function createStreetProvider() {
   });
 }
 
+function removeDS(viewer, dsRef, key) {
+  const ds = dsRef.current[key];
+  if (ds) {
+    viewer.dataSources.remove(ds, true);
+    dsRef.current[key] = null;
+  }
+}
+
 const GlobeViewer = forwardRef((_props, ref) => {
   const containerRef = useRef(null);
   const viewerRef = useRef(null);
   const imageryRef = useRef({ satellite: null, labels: null, street: null });
-  const dataSources = useRef({});
+  const dsRef = useRef({});
 
   const layers = useStore((s) => s.layers);
   const selectEvent = useStore((s) => s.selectEvent);
@@ -120,6 +128,7 @@ const GlobeViewer = forwardRef((_props, ref) => {
     viewer.scene.globe.enableLighting = false;
     viewer.scene.fog.enabled = true;
     viewer.scene.globe.showGroundAtmosphere = true;
+    viewer.scene.globe.depthTestAgainstTerrain = false;
 
     viewer.camera.setView({
       destination: Cartesian3.fromDegrees(0, 20, 20000000),
@@ -133,28 +142,22 @@ const GlobeViewer = forwardRef((_props, ref) => {
       const entity = picked.id;
       const props = {};
 
-      if (entity._properties) {
-        entity._properties.propertyNames.forEach((name) => {
-          props[name] = entity._properties[name]?.getValue();
+      const bag = entity.properties;
+      if (bag && bag.propertyNames) {
+        bag.propertyNames.forEach((name) => {
+          const val = bag[name];
+          props[name] = typeof val?.getValue === "function" ? val.getValue() : val;
         });
-      } else if (entity.properties) {
-        const bag = entity.properties;
-        if (bag.propertyNames) {
-          bag.propertyNames.forEach((name) => {
-            props[name] = bag[name]?.getValue?.() ?? bag[name];
-          });
-        } else if (typeof bag.getValue === "function") {
-          Object.assign(props, bag.getValue(viewer.clock.currentTime));
-        } else {
-          Object.assign(props, bag);
-        }
       }
 
       if (Object.keys(props).length > 0) {
-        const parent = viewer.dataSources._dataSources?.find(
-          (ds) => ds.entities.getById?.(entity.id) || ds.entities.values.includes(entity)
-        );
-        if (parent?.name) props._layerType = parent.name;
+        for (let i = 0; i < viewer.dataSources.length; i++) {
+          const ds = viewer.dataSources.get(i);
+          if (ds.entities.contains(entity)) {
+            props._layerType = ds.name;
+            break;
+          }
+        }
         selectEvent(props);
       }
     }, ScreenSpaceEventType.LEFT_CLICK);
@@ -179,22 +182,24 @@ const GlobeViewer = forwardRef((_props, ref) => {
 
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer) return;
-    loadDataLayers(viewer, layers, dataSources);
+    if (!viewer || viewer.isDestroyed()) return;
+    loadDataLayers(viewer, layers, dsRef);
   }, [layers]);
 
   useEffect(() => {
-    socket.on("aircraft:live", (data) => {
+    const onAircraft = (data) => {
       if (!viewerRef.current || !layers.aircraft) return;
-      updateLiveEntities(viewerRef.current, "aircraft", data);
-    });
-    socket.on("ships:live", (data) => {
+      loadTracking(viewerRef.current, dsRef, "aircraft", data);
+    };
+    const onShips = (data) => {
       if (!viewerRef.current || !layers.ships) return;
-      updateLiveEntities(viewerRef.current, "ships", data);
-    });
+      loadTracking(viewerRef.current, dsRef, "ships", data);
+    };
+    socket.on("aircraft:live", onAircraft);
+    socket.on("ships:live", onShips);
     return () => {
-      socket.off("aircraft:live");
-      socket.off("ships:live");
+      socket.off("aircraft:live", onAircraft);
+      socket.off("ships:live", onShips);
     };
   }, [layers.aircraft, layers.ships]);
 
@@ -204,118 +209,116 @@ const GlobeViewer = forwardRef((_props, ref) => {
 async function loadDataLayers(viewer, layers, dsRef) {
   if (layers.events) {
     try {
-      const geojson = await offlineApi.getEvents({ limit: 1000 });
-      if (dsRef.current.events) viewer.dataSources.remove(dsRef.current.events, true);
+      const geojson = await offlineApi.getEvents({ limit: 2000 });
+      removeDS(viewer, dsRef, "events");
 
-      const ds = new GeoJsonDataSource("events");
-      for (const f of (geojson.features || [])) {
+      const ds = new CustomDataSource("events");
+      const features = geojson.features || [];
+      for (const f of features) {
         const coords = f.geometry?.coordinates;
         if (!coords || coords.length < 2) continue;
         const [lng, lat] = coords;
+        if (typeof lng !== "number" || typeof lat !== "number") continue;
+        if (lng === 0 && lat === 0) continue;
         const props = f.properties || {};
         const evType = props.event_type || "news";
         const icon = EVENT_ICONS[evType] || EVENT_ICONS.news;
 
-        ds.entities.add(new Entity({
-          position: Cartesian3.fromDegrees(lng, lat, 0),
+        ds.entities.add({
+          position: Cartesian3.fromDegrees(lng, lat, 5000),
           billboard: {
             image: icon,
             width: 28,
             height: 28,
-            verticalOrigin: VerticalOrigin.BOTTOM,
+            verticalOrigin: VerticalOrigin.CENTER,
             horizontalOrigin: HorizontalOrigin.CENTER,
             heightReference: HeightReference.NONE,
-            scaleByDistance: new NearFarScalar(5e3, 1.8, 2e7, 0.7),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            scaleByDistance: new NearFarScalar(1e4, 1.6, 1.5e7, 0.55),
           },
           properties: { ...props, _layerType: "events" },
-        }));
+        });
       }
-      viewer.dataSources.add(ds);
+      await viewer.dataSources.add(ds);
       dsRef.current.events = ds;
     } catch (e) { console.warn("Events load failed", e); }
-  } else if (dsRef.current.events) {
-    viewer.dataSources.remove(dsRef.current.events, true);
-    dsRef.current.events = null;
+  } else {
+    removeDS(viewer, dsRef, "events");
   }
 
   if (layers.webcams) {
     try {
       const geojson = await api.getWebcams({});
-      if (dsRef.current.webcams) viewer.dataSources.remove(dsRef.current.webcams, true);
+      removeDS(viewer, dsRef, "webcams");
 
-      const ds = new GeoJsonDataSource("webcams");
+      const ds = new CustomDataSource("webcams");
       for (const f of (geojson.features || [])) {
         const coords = f.geometry?.coordinates;
         if (!coords || coords.length < 2) continue;
         const [lng, lat] = coords;
+        if (typeof lng !== "number" || typeof lat !== "number") continue;
         const props = f.properties || {};
 
-        ds.entities.add(new Entity({
-          position: Cartesian3.fromDegrees(lng, lat, 0),
+        ds.entities.add({
+          position: Cartesian3.fromDegrees(lng, lat, 3000),
           billboard: {
             image: WEBCAM_SVG,
             width: 20,
             height: 20,
-            verticalOrigin: VerticalOrigin.BOTTOM,
+            verticalOrigin: VerticalOrigin.CENTER,
             horizontalOrigin: HorizontalOrigin.CENTER,
             heightReference: HeightReference.NONE,
-            scaleByDistance: new NearFarScalar(5e3, 1.6, 2e7, 0.5),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            scaleByDistance: new NearFarScalar(1e4, 1.4, 1.5e7, 0.4),
           },
           properties: { ...props, _layerType: "webcams" },
-        }));
+        });
       }
-      viewer.dataSources.add(ds);
+      await viewer.dataSources.add(ds);
       dsRef.current.webcams = ds;
     } catch (e) { console.warn("Webcams load failed", e); }
-  } else if (dsRef.current.webcams) {
-    viewer.dataSources.remove(dsRef.current.webcams, true);
-    dsRef.current.webcams = null;
+  } else {
+    removeDS(viewer, dsRef, "webcams");
   }
 
   if (layers.ships && !dsRef.current.ships) {
     try {
       const geojson = await api.getShips({ live: "false" });
-      if (geojson.features?.length) updateLiveEntities(viewer, "ships", geojson);
+      if (geojson.features?.length) loadTracking(viewer, dsRef, "ships", geojson);
     } catch (e) { console.warn("Ships initial load failed", e); }
   }
+  if (!layers.ships) removeDS(viewer, dsRef, "ships");
 
   if (layers.aircraft && !dsRef.current.aircraft) {
     try {
       const geojson = await api.getAircraft({ live: "false" });
-      if (geojson.features?.length) updateLiveEntities(viewer, "aircraft", geojson);
+      if (geojson.features?.length) loadTracking(viewer, dsRef, "aircraft", geojson);
     } catch (e) { console.warn("Aircraft initial load failed", e); }
   }
-
-  for (const layerKey of ["aircraft", "ships", "webcams"]) {
-    if (!layers[layerKey] && dsRef.current[layerKey]) {
-      viewer.dataSources.remove(dsRef.current[layerKey], true);
-      dsRef.current[layerKey] = null;
-    }
-  }
+  if (!layers.aircraft) removeDS(viewer, dsRef, "aircraft");
 
   viewer.scene.requestRender();
 }
 
-function updateLiveEntities(viewer, type, geojson) {
+function loadTracking(viewer, dsRef, type, geojson) {
   if (!geojson?.features?.length) return;
 
-  const existing = viewer.dataSources._dataSources?.find((d) => d.name === type);
-  if (existing) viewer.dataSources.remove(existing, true);
+  removeDS(viewer, dsRef, type);
 
-  const ds = new GeoJsonDataSource(type);
+  const ds = new CustomDataSource(type);
   const isAircraft = type === "aircraft";
   const icon = isAircraft ? PLANE_SVG : SHIP_SVG;
   const iconSize = isAircraft ? 24 : 18;
 
   for (const f of geojson.features) {
-    const [lng, lat] = f.geometry.coordinates;
+    const coords = f.geometry?.coordinates;
+    if (!coords || coords.length < 2) continue;
+    const [lng, lat] = coords;
+    if (typeof lng !== "number" || typeof lat !== "number") continue;
     const props = f.properties || {};
     const heading = props.heading ?? 0;
+    const alt = isAircraft ? (props.altitude || 0) : 0;
 
-    const entity = new Entity({
-      position: Cartesian3.fromDegrees(lng, lat, isAircraft ? (props.altitude || 0) : 0),
+    ds.entities.add({
+      position: Cartesian3.fromDegrees(lng, lat, alt),
       billboard: {
         image: icon,
         width: iconSize,
@@ -324,15 +327,14 @@ function updateLiveEntities(viewer, type, geojson) {
         verticalOrigin: VerticalOrigin.CENTER,
         horizontalOrigin: HorizontalOrigin.CENTER,
         heightReference: HeightReference.NONE,
-        scaleByDistance: new NearFarScalar(5e3, 1.4, 2e7, 0.5),
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        scaleByDistance: new NearFarScalar(1e4, 1.4, 1.5e7, 0.4),
       },
       properties: props,
     });
-    ds.entities.add(entity);
   }
 
   viewer.dataSources.add(ds);
+  dsRef.current[type] = ds;
 }
 
 GlobeViewer.displayName = "GlobeViewer";
