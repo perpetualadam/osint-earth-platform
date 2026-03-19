@@ -79,9 +79,24 @@ function removeDS(viewer, dsRef, key) {
   }
 }
 
+const M_TO_FT = 3.28084;
+const M_TO_YD = 1.09361;
+
+function formatHeight(meters) {
+  const ft = meters * M_TO_FT;
+  const yd = meters * M_TO_YD;
+  const fmt = (n, unit) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : Math.round(n).toLocaleString()) + ` ${unit}`;
+  let primary;
+  if (meters >= 1000000) primary = `${(meters / 1000).toFixed(0)} km`;
+  else if (meters >= 1000) primary = `${(meters / 1000).toFixed(1)} km`;
+  else primary = `${Math.round(meters)} m`;
+  return `${primary} (${fmt(ft, "ft")}, ${fmt(yd, "yd")})`;
+}
+
 const GlobeViewer = forwardRef((_props, ref) => {
   const containerRef = useRef(null);
   const viewerRef = useRef(null);
+  const heightLabelRef = useRef(null);
   const imageryRef = useRef({ satellite: null, labels: null, street: null, sentinel2: null });
   const dsRef = useRef({});
 
@@ -166,7 +181,19 @@ const GlobeViewer = forwardRef((_props, ref) => {
 
     viewerRef.current = viewer;
 
+    const updateHeight = () => {
+      const el = heightLabelRef.current;
+      if (!el || !viewer.camera) return;
+      try {
+        const carto = viewer.scene.globe.ellipsoid.cartesianToCartographic(viewer.camera.positionWC);
+        if (carto) el.textContent = `Altitude: ${formatHeight(carto.height)}`;
+      } catch (_) {}
+    };
+    viewer.camera.changed.addEventListener(updateHeight);
+    updateHeight();
+
     return () => {
+      viewer.camera.changed.removeEventListener(updateHeight);
       handler.destroy();
       viewer.destroy();
       viewerRef.current = null;
@@ -241,7 +268,28 @@ const GlobeViewer = forwardRef((_props, ref) => {
     };
   }, [layers.aircraft, layers.ships]);
 
-  return <div ref={containerRef} style={{ flex: 1, width: "100%", height: "100%" }} />;
+  return (
+    <div style={{ position: "relative", flex: 1, width: "100%", height: "100%" }}>
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <div
+        ref={heightLabelRef}
+        style={{
+          position: "absolute",
+          bottom: 8,
+          left: 8,
+          padding: "4px 8px",
+          background: "rgba(0,0,0,0.6)",
+          color: "#fff",
+          fontSize: "12px",
+          fontFamily: "monospace",
+          borderRadius: 4,
+          pointerEvents: "none",
+        }}
+      >
+        Altitude: —
+      </div>
+    </div>
+  );
 });
 
 async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false) {
