@@ -82,11 +82,28 @@ export const offlineApi = {
     }
   },
 
+  async getEnvironmental(params) {
+    try {
+      return await api.getEnvironmental(params);
+    } catch {
+      console.warn("Environmental fetch failed, using cached data");
+      return getCachedEnvironmental(params?.event_type ? { event_type: params.event_type.split(",") } : {});
+    }
+  },
+
   async getReplayFrames(params) {
     try {
       return await api.getReplayFrames(params);
     } catch {
       return { frames: [], frame_count: 0 };
+    }
+  },
+
+  async getTelegramGeojson(params) {
+    try {
+      return await api.getTelegramGeojson(params);
+    } catch {
+      return { type: "FeatureCollection", features: [] };
     }
   },
 };

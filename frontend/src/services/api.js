@@ -2,8 +2,19 @@ const BASE = import.meta.env.VITE_API_URL || "";
 
 async function fetchJSON(url, opts) {
   const res = await fetch(url, opts);
+  const text = await res.text();
   if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-  return res.json();
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error(`API returned empty body for ${url}`);
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const hint =
+      trimmed.includes("<!DOCTYPE") || trimmed.includes("<html")
+        ? " (got HTML instead of JSON — use same-origin /api: empty VITE_API_URL, then Vite :5173, Docker SPA :8080, or main nginx :80)"
+        : "";
+    throw new Error(`API response was not JSON for ${url}${hint}`);
+  }
 }
 
 export const api = {
@@ -42,6 +53,14 @@ export const api = {
 
   getHeatmap: (type) => fetchJSON(`${BASE}/api/heatmaps/${type}`),
 
+  getEnvironmental: (params) =>
+    fetchJSON(`${BASE}/api/environmental?${new URLSearchParams(params)}`),
+
+  getAnomalies: (params) =>
+    fetchJSON(`${BASE}/api/anomalies?${new URLSearchParams(params)}`),
+
+  getAnomaly: (id) => fetchJSON(`${BASE}/api/anomalies/${id}`),
+
   getReplayFrames: (params) =>
     fetchJSON(`${BASE}/api/replay/frames?${new URLSearchParams(params)}`),
 
@@ -54,4 +73,15 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+
+  scanAnomalies: (params = {}) =>
+    fetchJSON(`${BASE}/api/ai/anomaly/scan?${new URLSearchParams({ hours: 24, anomaly_type: "all", ...params })}`, {
+      method: "POST",
+    }),
+
+  getTelegramGeojson: (params) =>
+    fetchJSON(`${BASE}/api/telegram/geojson?${new URLSearchParams(params)}`),
+
+  getTelegramPosts: (params) =>
+    fetchJSON(`${BASE}/api/telegram/posts?${new URLSearchParams(params)}`),
 };

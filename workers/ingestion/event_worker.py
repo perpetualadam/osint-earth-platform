@@ -184,6 +184,8 @@ class EventWorker(BaseWorker):
                             total += 1
 
         self.logger.info("Inserted %d GDELT events (conflict/protest/news)", total)
+        if total > 0:
+            self.publish("events:new", {"source": "gdelt", "count": total})
 
     def _fetch_acled(self):
         """Fetch conflict events from ACLED."""
@@ -238,3 +240,5 @@ class EventWorker(BaseWorker):
                 count += 1
 
         self.logger.info("Inserted %d ACLED conflict events", count)
+        if count > 0:
+            self.publish("events:new", {"source": "acled", "count": count})

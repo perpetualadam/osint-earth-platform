@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useStore } from "../hooks/useStore";
 import { processSyncQueue } from "../services/offlineManager";
+import { getCacheStats } from "../services/localDb";
 
 async function checkConnectivity() {
   try {
-    const r = await fetch("/api/health", { method: "GET", cache: "no-store" });
+    const r = await fetch("/api/health/live", { method: "GET", cache: "no-store" });
     return r.ok;
   } catch {
     return navigator.onLine;
@@ -15,6 +16,15 @@ export default function ConnectionStatus() {
   const isOnline = useStore((s) => s.isOnline);
   const setOnline = useStore((s) => s.setOnline);
   const [syncing, setSyncing] = useState(false);
+  const [pendingSync, setPendingSync] = useState(0);
+
+  useEffect(() => {
+    getCacheStats().then((s) => setPendingSync(s?.pending_sync ?? 0)).catch(() => {});
+    const interval = setInterval(() => {
+      getCacheStats().then((s) => setPendingSync(s?.pending_sync ?? 0)).catch(() => {});
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [isOnline, syncing]);
 
   useEffect(() => {
     checkConnectivity().then(setOnline);
@@ -27,6 +37,8 @@ export default function ConnectionStatus() {
         try {
           const synced = await processSyncQueue();
           if (synced > 0) console.log(`Synced ${synced} offline actions`);
+          const s = await getCacheStats();
+          setPendingSync(s?.pending_sync ?? 0);
         } catch (e) {
           console.warn("Sync queue processing failed:", e);
         }
@@ -49,7 +61,7 @@ export default function ConnectionStatus() {
     };
   }, [setOnline]);
 
-  const statusText = syncing ? "Syncing" : isOnline ? "Live" : "Offline";
+  const statusText = syncing ? "Syncing" : isOnline ? "Live" : pendingSync > 0 ? `Offline (${pendingSync} queued)` : "Offline";
   const statusClass = syncing ? "syncing" : isOnline ? "online" : "offline";
 
   return (
@@ -60,7 +72,9 @@ export default function ConnectionStatus() {
           ? syncing
             ? "Syncing offline actions…"
             : "Connected — receiving live data"
-          : "Offline — using cached data"
+          : pendingSync > 0
+            ? `Offline — ${pendingSync} pending actions will sync when back online`
+            : "Offline — using cached data"
       }
     >
       <span className={`conn-dot ${statusClass}`} />

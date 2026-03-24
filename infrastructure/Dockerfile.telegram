@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY workers/requirements-telegram.txt /app/requirements-telegram.txt
+RUN pip install --no-cache-dir -r /app/requirements-telegram.txt
+
+COPY workers/telegram_ingest /app/telegram_ingest
+COPY workers/config/telegram_channels.yaml /app/config/telegram_channels.yaml
+
+ENV PYTHONPATH=/app
+ENV TELEGRAM_CHANNELS_CONFIG=/app/config/telegram_channels.yaml
+ENV TELEGRAM_WORKDIR=/data
+
+CMD ["python", "-m", "telegram_ingest.main"]

@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ---------------------------------------------------------------------------
   # PostgreSQL + PostGIS
@@ -17,6 +15,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ../database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
       - ../database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+      - ../database/seed_environmental_anomalies.sql:/docker-entrypoint-initdb.d/03-seed-environmental-anomalies.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-osint}"]
       interval: 10s
@@ -91,22 +90,18 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    env_file:
+      - ../.env
     environment:
+      # Same DB/Redis/MinIO secrets as workers — from ../.env (do not hardcode user here).
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB:-osint_earth}
-      POSTGRES_USER: ${POSTGRES_USER:-osint}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_postgres_password}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme_redis_password}
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-osint_minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-changeme_minio_password}
       API_PORT: 3001
-      JWT_SECRET: ${JWT_SECRET:-changeme_jwt_secret}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      AI_SERVICE_URL: http://ai-service:8000
     ports:
       - "3001:3001"
 
@@ -127,8 +122,39 @@ services:
       - ../.env
     environment:
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       REDIS_HOST: redis
+      REDIS_PORT: 6379
       MINIO_ENDPOINT: minio
+
+  # ---------------------------------------------------------------------------
+  # Telegram channel ingest (Pyrogram). Exits 0 if TELEGRAM_INGEST_ENABLED=false
+  # or TELEGRAM_API_ID / TELEGRAM_API_HASH missing. Edit workers/config/telegram_channels.yaml.
+  # ---------------------------------------------------------------------------
+  telegram-ingest:
+    build:
+      context: ..
+      dockerfile: infrastructure/Dockerfile.telegram
+    restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      TELEGRAM_WORKDIR: /data
+      TELEGRAM_CHANNELS_CONFIG: /app/config/telegram_channels.yaml
+      LIBRETRANSLATE_URL: ${LIBRETRANSLATE_URL:-https://libretranslate.com}
+      NOMINATIM_URL: ${NOMINATIM_URL:-https://nominatim.openstreetmap.org}
+    volumes:
+      - telegram_session:/data
+      - ../workers/config/telegram_channels.yaml:/app/config/telegram_channels.yaml:ro
 
   # ---------------------------------------------------------------------------
   # AI / ML processing service
@@ -146,8 +172,11 @@ services:
     env_file:
       - ../.env
     environment:
+      # Inside the stack Postgres listens on 5432; .env may use 5433 for host tools — override here.
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       REDIS_HOST: redis
+      REDIS_PORT: 6379
       MINIO_ENDPOINT: minio
     ports:
       - "8000:8000"
@@ -159,13 +188,21 @@ services:
     build:
       context: ..
       dockerfile: infrastructure/Dockerfile.frontend
+      args:
+        VITE_CESIUM_ION_TOKEN: ${VITE_CESIUM_ION_TOKEN:-}
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_WS_URL: ${VITE_WS_URL:-}
     restart: unless-stopped
+    depends_on:
+      - backend
+    # Runtime only (mostly hints); the SPA bundle uses build args above. Leave VITE_* empty in .env for same-origin /api + Socket.io as the page (matches nginx-frontend.conf).
     environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
-      VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:3001}
+      VITE_API_URL: ${VITE_API_URL:-}
+      VITE_WS_URL: ${VITE_WS_URL:-}
       VITE_CESIUM_ION_TOKEN: ${VITE_CESIUM_ION_TOKEN:-}
+    # Host 8080 → container 80 (nginx SPA). Vite dev can use 5173 without clashing.
     ports:
-      - "5173:80"
+      - "8080:80"
 
   # ---------------------------------------------------------------------------
   # Nginx reverse proxy + tile cache
@@ -187,3 +224,4 @@ volumes:
   redisdata:
   miniodata:
   nginx_cache:
+  telegram_session:

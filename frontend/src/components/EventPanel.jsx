@@ -3,6 +3,78 @@ import { useStore } from "../hooks/useStore";
 import { offlineApi } from "../services/offlineApi";
 import { api } from "../services/api";
 
+function TelegramPostDetail({ data, onClose }) {
+  const ch = data.channel_username || "channel";
+  const body = data.text_en || data.text || "—";
+  const posted = data.posted_at
+    ? new Date(data.posted_at).toLocaleString()
+    : "—";
+  return (
+    <aside className="event-panel panel ep-telegram-detail">
+      <div className="ep-header">
+        <h2 className="ep-title">@{ch}</h2>
+        <button type="button" className="ep-close" onClick={onClose}>&times;</button>
+      </div>
+      <div className="ep-type-badge ep-badge-telegram">Telegram</div>
+      <div className="ep-meta">
+        <div className="ep-row"><span>Posted</span><span>{posted}</span></div>
+        {data.geo_confidence != null && (
+          <div className="ep-row"><span>Geo confidence</span><span>{Number(data.geo_confidence).toFixed(2)}</span></div>
+        )}
+        <div className="ep-desc" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{body}</div>
+        {data.text_en && data.text && data.text !== data.text_en && (
+          <details className="ep-desc" style={{ marginTop: 8 }}>
+            <summary>Original text</summary>
+            <div style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{data.text}</div>
+          </details>
+        )}
+      </div>
+      <style>{`
+        .ep-telegram-detail .ep-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+        .ep-telegram-detail .ep-title { font-size: 15px; font-weight: 600; word-break: break-word; }
+        .ep-telegram-detail .ep-close {
+          flex-shrink: 0;
+          background: none;
+          border: none;
+          font-size: 22px;
+          line-height: 1;
+          cursor: pointer;
+          color: var(--text-secondary);
+          padding: 0 4px;
+        }
+        .ep-telegram-detail .ep-close:hover { color: var(--text-primary); }
+        .ep-telegram-detail .ep-meta { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+        .ep-telegram-detail .ep-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 8px;
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        .ep-telegram-detail .ep-row span:last-child { color: var(--text-primary); font-weight: 500; }
+        .ep-telegram-detail .ep-desc { font-size: 12px; color: var(--text-secondary); }
+        .ep-telegram-detail .ep-type-badge {
+          display: inline-block;
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.6px;
+          padding: 3px 8px;
+          border-radius: 4px;
+          margin-bottom: 12px;
+        }
+        .ep-telegram-detail .ep-badge-telegram { background: #38bdf822; color: #38bdf8; border: 1px solid #38bdf844; }
+      `}</style>
+    </aside>
+  );
+}
+
 function AircraftDetail({ data, onClose }) {
   const [typeInfo, setTypeInfo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -71,7 +143,7 @@ function AircraftDetail({ data, onClose }) {
   );
 }
 
-function EventDetail({ data, onClose, snapshots, openGallery }) {
+function EventDetail({ data, onClose, snapshots, openGallery, selectEvent }) {
   const meta = data.metadata || {};
   const badgeClass = `ep-badge-${data.event_type || "news"}`;
   const label = (data.event_type || "event").replace(/^\w/, (c) => c.toUpperCase());
@@ -79,6 +151,8 @@ function EventDetail({ data, onClose, snapshots, openGallery }) {
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsLangs, setNewsLangs] = useState("english");
   const [newsTranslate, setNewsTranslate] = useState(false);
+  const [relatedEvents, setRelatedEvents] = useState([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
 
   useEffect(() => {
     if (!data.id) return;
@@ -91,6 +165,20 @@ function EventDetail({ data, onClose, snapshots, openGallery }) {
       .finally(() => setNewsLoading(false));
   }, [data.id, newsLangs, newsTranslate]);
 
+  useEffect(() => {
+    if (data.lat == null || data.lon == null) return;
+    const { lat, lon } = data;
+    setRelatedLoading(true);
+    const pad = 0.5;
+    const bbox = [lon - pad, lat - pad, lon + pad, lat + pad].join(",");
+    const timeStart = data.occurred_at ? new Date(new Date(data.occurred_at).getTime() - 86400000 * 2).toISOString() : "";
+    const timeEnd = data.occurred_at ? new Date(new Date(data.occurred_at).getTime() + 86400000 * 2).toISOString() : "";
+    api.getEvents({ bbox, time_start: timeStart, time_end: timeEnd, limit: 10, dedupe: "1" })
+      .then((g) => setRelatedEvents((g.features || []).filter((f) => f.properties?.id !== data.id)))
+      .catch(() => setRelatedEvents([]))
+      .finally(() => setRelatedLoading(false));
+  }, [data.id, data.lat, data.lon, data.occurred_at]);
+
   return (
     <aside className="event-panel panel">
       <div className="ep-header">
@@ -99,6 +187,9 @@ function EventDetail({ data, onClose, snapshots, openGallery }) {
       </div>
       <div className={`ep-type-badge ${badgeClass}`}>{label}</div>
       <div className="ep-meta">
+        {data.merged_count > 1 && (
+          <div className="ep-row ep-row-highlight"><span>Merged</span><span>{data.merged_count} events from same article/location</span></div>
+        )}
         {meta.location_name && <div className="ep-row"><span>Location</span><span>{meta.location_name}</span></div>}
         {data.source && <div className="ep-row"><span>Source</span><span>{data.source.toUpperCase()}</span></div>}
         {data.occurred_at && <div className="ep-row"><span>Time</span><span>{new Date(data.occurred_at).toLocaleString()}</span></div>}
@@ -134,6 +225,32 @@ function EventDetail({ data, onClose, snapshots, openGallery }) {
         </label>
       </div>
       {newsLoading && <p className="ep-news-loading">Loading related news...</p>}
+      {data.lat != null && data.lon != null && (
+        <div className="ep-related-section">
+          <h3 className="ep-snap-title">Related events nearby</h3>
+          {relatedLoading && <p className="ep-news-loading">Loading…</p>}
+          {!relatedLoading && relatedEvents.length === 0 && <p className="ep-news-loading">None found</p>}
+          {!relatedLoading && relatedEvents.map((f) => {
+            const p = f.properties || {};
+            const coords = f.geometry?.coordinates || [];
+            const ev = { ...p, _layerType: "events", lat: coords[1], lon: coords[0] };
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className="ep-related-btn"
+                onClick={() => selectEvent(ev)}
+              >
+                <span className="ep-related-title">{p.title || p.event_type || "Event"}</span>
+                <span className="ep-related-meta">
+                  {p.event_type} · {p.occurred_at ? new Date(p.occurred_at).toLocaleDateString() : ""}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {news.length > 0 && (
         <div className="ep-news-section">
           <h3 className="ep-snap-title">Related News</h3>
@@ -220,6 +337,190 @@ function WebcamDetail({ data, onClose }) {
   );
 }
 
+function EnvironmentalDetail({ data, onClose }) {
+  const meta = data.metadata || {};
+  const evType = (data.event_type || "wildfire").replace(/^\w/, (c) => c.toUpperCase());
+  const badgeClass = data.event_type === "earthquake" ? "ep-badge-disaster" : "ep-badge-conflict";
+
+  return (
+    <aside className="event-panel panel">
+      <div className="ep-header">
+        <h2 className="ep-title">{evType} #{data.id}</h2>
+        <button className="ep-close" onClick={onClose}>&times;</button>
+      </div>
+      <div className={`ep-type-badge ${badgeClass}`}>{evType}</div>
+      <div className="ep-meta">
+        {data.data_source && <div className="ep-row"><span>Source</span><span>{data.data_source}</span></div>}
+        {data.started_at && <div className="ep-row"><span>Started</span><span>{new Date(data.started_at).toLocaleString()}</span></div>}
+        {data.severity != null && (
+          <div className="ep-row">
+            <span>{data.event_type === "earthquake" ? "Magnitude" : "Severity"}</span>
+            <span>{data.severity}</span>
+          </div>
+        )}
+        {meta.bright_ti4 && <div className="ep-row"><span>Brightness (K)</span><span>{meta.bright_ti4}</span></div>}
+        {meta.frp && <div className="ep-row"><span>FRP (MW)</span><span>{meta.frp}</span></div>}
+        {meta.depth && <div className="ep-row"><span>Depth (km)</span><span>{meta.depth}</span></div>}
+      </div>
+      {meta.url && (
+        <a href={meta.url} target="_blank" rel="noopener noreferrer" className="ep-link">
+          View source
+        </a>
+      )}
+    </aside>
+  );
+}
+
+function roundCoord1(x) {
+  return Math.round(x * 10) / 10;
+}
+
+function AnomalyDetail({ data, onClose, selectEvent }) {
+  const meta = data.metadata || {};
+  const typeLabel = (data.anomaly_type || "anomaly").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+  const timeStart = useStore((s) => s.timeStart);
+  const timeEnd = useStore((s) => s.timeEnd);
+  const layers = useStore((s) => s.layers);
+  const toggleLayer = useStore((s) => s.toggleLayer);
+
+  const [cellState, setCellState] = useState(null);
+
+  useEffect(() => {
+    setCellState(null);
+  }, [data.id]);
+
+  const loadCellEvents = async () => {
+    let lng = data.lon;
+    let lat = data.lat;
+    if (typeof lng !== "number" || typeof lat !== "number") {
+      try {
+        const a = await api.getAnomaly(data.id);
+        const c = a.geometry?.coordinates;
+        if (c?.length >= 2) {
+          lng = c[0];
+          lat = c[1];
+        }
+      } catch {
+        setCellState({ error: "Could not load anomaly location." });
+        return;
+      }
+    }
+    if (typeof lng !== "number" || typeof lat !== "number") {
+      setCellState({ error: "No coordinates for this anomaly." });
+      return;
+    }
+
+    setCellState({ loading: true });
+    const half = 0.05;
+    const bbox = `${lng - half},${lat - half},${lng + half},${lat + half}`;
+    const gridLng = roundCoord1(lng);
+    const gridLat = roundCoord1(lat);
+
+    try {
+      const fc = await api.getEvents({
+        bbox,
+        time_start: timeStart,
+        time_end: timeEnd,
+        limit: 2000,
+      });
+      const features = (fc.features || []).filter((f) => {
+        const coords = f.geometry?.coordinates;
+        if (!coords || coords.length < 2) return false;
+        return roundCoord1(coords[0]) === gridLng && roundCoord1(coords[1]) === gridLat;
+      });
+      setCellState({ ok: true, features });
+      if (!layers.events) toggleLayer("events");
+    } catch (e) {
+      setCellState({ error: e.message || "Request failed" });
+    }
+  };
+
+  const isCluster = data.anomaly_type === "event_cluster";
+
+  return (
+    <aside className="event-panel panel">
+      <div className="ep-header">
+        <h2 className="ep-title">{typeLabel} #{data.id}</h2>
+        <button type="button" className="ep-close" onClick={onClose}>&times;</button>
+      </div>
+      <div className="ep-type-badge ep-badge-anomaly">{typeLabel}</div>
+      <div className="ep-meta">
+        {data.detection_method && <div className="ep-row"><span>Method</span><span>{data.detection_method}</span></div>}
+        {data.score != null && <div className="ep-row"><span>Score</span><span>{data.score.toFixed(2)}</span></div>}
+        {data.detected_at && <div className="ep-row"><span>Detected</span><span>{new Date(data.detected_at).toLocaleString()}</span></div>}
+        {data.baseline_value != null && <div className="ep-row"><span>Baseline</span><span>{data.baseline_value}</span></div>}
+        {data.observed_value != null && <div className="ep-row"><span>Observed</span><span>{data.observed_value}</span></div>}
+        {typeof data.lon === "number" && typeof data.lat === "number" && (
+          <div className="ep-row"><span>Grid center</span><span>{data.lat.toFixed(1)}°, {data.lon.toFixed(1)}°</span></div>
+        )}
+      </div>
+      {meta.description && <p className="ep-desc">{meta.description}</p>}
+
+      {isCluster && (
+        <div className="ep-cell-events">
+          <p className="ep-desc ep-cell-hint">
+            Load OSINT events in the same 0.1° cell using the map timeline ({new Date(timeStart).toLocaleDateString()} – {new Date(timeEnd).toLocaleDateString()}).
+          </p>
+          <button type="button" className="ep-cell-load-btn" onClick={loadCellEvents} disabled={cellState?.loading}>
+            {cellState?.loading ? "Loading…" : "Load events in this cell"}
+          </button>
+          {cellState?.error && <p className="ep-cell-error">{cellState.error}</p>}
+          {cellState?.ok && (
+            <>
+              <h3 className="ep-snap-title">Events ({cellState.features.length})</h3>
+              {cellState.features.length === 0 ? (
+                <p className="ep-desc">None in this cell for the current timeline. Widen the timeline or zoom the time bar.</p>
+              ) : (
+                <ul className="ep-cluster-list">
+                  {cellState.features.map((f) => {
+                    const p = f.properties || {};
+                    const coords = f.geometry?.coordinates || [];
+                    const ev = { ...p, _layerType: "events", lat: coords[1], lon: coords[0] };
+                    return (
+                      <li key={p.id} className="ep-cluster-item">
+                        <button
+                          type="button"
+                          className="ep-cluster-btn"
+                          onClick={() => selectEvent(ev)}
+                        >
+                          <span className="ep-cluster-label">{p.title || p.event_type || `Event #${p.id}`}</span>
+                          <span className="ep-cluster-type">
+                            {p.event_type}
+                            {p.occurred_at ? ` · ${new Date(p.occurred_at).toLocaleString()}` : ""}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      <style>{`
+        .ep-cell-events { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+        .ep-cell-hint { margin: 0 0 10px 0; font-size: 11px; line-height: 1.4; }
+        .ep-cell-load-btn {
+          width: 100%;
+          padding: 8px 12px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          border-radius: 4px;
+          border: 1px solid var(--border);
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+        .ep-cell-load-btn:hover:not(:disabled) { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .ep-cell-load-btn:disabled { opacity: 0.6; cursor: wait; }
+        .ep-cell-error { color: #f87171; font-size: 12px; margin: 8px 0 0 0; }
+      `}</style>
+    </aside>
+  );
+}
+
 function ShipDetail({ data, onClose }) {
   const name = data.vessel_name || data.name || "";
   const type = data.vessel_type || data.ship_type || "";
@@ -252,14 +553,124 @@ export default function EventPanel() {
   const [snapshots, setSnapshots] = useState([]);
 
   useEffect(() => {
-    if (!event?.id) return;
+    if (!event?.id || !event?._layerType) return;
+    if (event._layerType !== "events") {
+      setSnapshots([]);
+      return;
+    }
     offlineApi.getEventTimeline(event.id).then(setSnapshots).catch(() => setSnapshots([]));
-  }, [event?.id]);
+  }, [event?.id, event?._layerType]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") selectEvent(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectEvent]);
 
   if (!event) return null;
 
   const onClose = () => selectEvent(null);
 
+  if (event._cluster && Array.isArray(event.entities)) {
+    return (
+      <aside className="event-panel panel ep-cluster-panel">
+        <div className="ep-cluster-top">
+          <div className="ep-header">
+            <h2 className="ep-title">Cluster — {event.entities.length} items</h2>
+            <button className="ep-close" onClick={onClose}>&times;</button>
+          </div>
+          <p className="ep-desc ep-cluster-hint">
+            Markers at the same or nearby location. Click one to see details.
+          </p>
+        </div>
+        <div className="ep-cluster-scroll">
+          <ul className="ep-cluster-list">
+            {event.entities.map((item, i) => {
+              const label = item.name || item.title || item.vessel_name || item.callsign || item.event_type || item.anomaly_type || `Item ${i + 1}`;
+              const typeLabel = (item._layerType || item.event_type || item.anomaly_type || "unknown").replace(/_/g, " ");
+              return (
+                <li key={i} className="ep-cluster-item">
+                  <button
+                    type="button"
+                    className="ep-cluster-btn"
+                    onClick={() => selectEvent(item)}
+                  >
+                    <span className="ep-cluster-label">{label}</span>
+                    <span className="ep-cluster-type">{typeLabel}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        <style>{`
+          .ep-cluster-panel.event-panel {
+            width: 300px;
+            max-height: min(85vh, calc(100vh - 56px));
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            flex-shrink: 0;
+            border-left: 1px solid var(--border);
+            font-size: 13px;
+          }
+          .ep-cluster-top { flex-shrink: 0; }
+          .ep-cluster-panel .ep-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 0;
+          }
+          .ep-cluster-panel .ep-title { font-size: 15px; font-weight: 600; word-break: break-word; }
+          .ep-cluster-panel .ep-close {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+            color: var(--text-secondary);
+            padding: 0 4px;
+          }
+          .ep-cluster-panel .ep-close:hover { color: var(--text-primary); }
+          .ep-cluster-hint { margin: 0 0 10px 0; font-size: 12px; color: var(--text-secondary); }
+          .ep-cluster-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            padding-right: 4px;
+            margin-right: -2px;
+          }
+          .ep-cluster-list { list-style: none; margin: 0; padding: 0; }
+          .ep-cluster-item { margin-bottom: 4px; }
+          .ep-cluster-btn {
+            width: 100%;
+            text-align: left;
+            padding: 8px 12px;
+            background: var(--bg-hover);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+          }
+          .ep-cluster-btn:hover { background: var(--accent); color: white; }
+          .ep-cluster-label { font-weight: 500; word-break: break-word; }
+          .ep-cluster-type { font-size: 11px; opacity: 0.8; }
+        `}</style>
+      </aside>
+    );
+  }
+
+  if (event._layerType === "telegram") {
+    return <TelegramPostDetail data={event} onClose={onClose} />;
+  }
   if (event._layerType === "aircraft" || event.icao24) {
     return <AircraftDetail data={event} onClose={onClose} />;
   }
@@ -269,8 +680,28 @@ export default function EventPanel() {
   if (event._layerType === "webcams" || (event.stream_url && event.camera_type)) {
     return <WebcamDetail data={event} onClose={onClose} />;
   }
+  if (event._layerType === "environmental" || (event.data_source && ["wildfire", "earthquake"].includes(event.event_type))) {
+    return <EnvironmentalDetail data={event} onClose={onClose} />;
+  }
+  if (event._layerType === "anomalies" || event.anomaly_type) {
+    return <AnomalyDetail data={event} onClose={onClose} selectEvent={selectEvent} />;
+  }
+  if (event._layerType?.startsWith("heatmap_")) {
+    return (
+      <aside className="event-panel panel">
+        <div className="ep-header">
+          <h2 className="ep-title">{event.label || event.heatmap_type || "Heatmap"}</h2>
+          <button className="ep-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="ep-meta">
+          {event.weight != null && <div className="ep-row"><span>Intensity</span><span>{event.weight}</span></div>}
+          <div className="ep-row"><span>Type</span><span>{event.heatmap_type || event._layerType}</span></div>
+        </div>
+      </aside>
+    );
+  }
   if (event._layerType === "events" || event.event_type) {
-    return <EventDetail data={event} onClose={onClose} snapshots={snapshots} openGallery={openGallery} />;
+    return <EventDetail data={event} onClose={onClose} snapshots={snapshots} openGallery={openGallery} selectEvent={selectEvent} />;
   }
 
   return (
@@ -344,6 +775,8 @@ export default function EventPanel() {
         .ep-badge-disaster { background: #eab30822; color: #eab308; border: 1px solid #eab30844; }
         .ep-badge-news { background: #3b82f622; color: #3b82f6; border: 1px solid #3b82f644; }
         .ep-badge-webcam { background: #10b98122; color: #10b981; border: 1px solid #10b98144; }
+        .ep-badge-telegram { background: #38bdf822; color: #38bdf8; border: 1px solid #38bdf844; }
+        .ep-badge-anomaly { background: #a855f722; color: #a855f7; border: 1px solid #a855f744; }
         .ep-badge-military { background: #ef444422; color: #ef4444; border: 1px solid #ef444444; }
         .ep-badge-government { background: #a855f722; color: #a855f7; border: 1px solid #a855f744; }
         .ep-badge-commercial { background: #3b82f622; color: #3b82f6; border: 1px solid #3b82f644; }
@@ -429,6 +862,25 @@ export default function EventPanel() {
           font-style: italic;
           margin-bottom: 8px;
         }
+        .ep-related-section { margin-bottom: 12px; }
+        .ep-related-btn {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+          width: 100%;
+          padding: 8px 10px;
+          margin-bottom: 6px;
+          background: var(--bg-hover);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          cursor: pointer;
+          text-align: left;
+          color: inherit;
+        }
+        .ep-related-btn:hover { background: var(--accent); color: white; }
+        .ep-related-title { font-size: 12px; font-weight: 500; }
+        .ep-related-meta { font-size: 10px; opacity: 0.8; }
         .ep-news-section {
           margin-bottom: 12px;
         }

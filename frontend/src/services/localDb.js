@@ -88,12 +88,29 @@ export async function cacheEnvironmental(rows) {
   await db.cached_environmental.bulkPut(items);
 }
 
-export async function getCachedEnvironmental(eventType) {
+export async function getCachedEnvironmental(filters = {}) {
   let collection = db.cached_environmental.toCollection();
-  if (eventType) {
-    collection = db.cached_environmental.where("event_type").equals(eventType);
+  if (filters.event_type) {
+    const types = Array.isArray(filters.event_type) ? filters.event_type : [filters.event_type];
+    collection = db.cached_environmental.where("event_type").anyOf(types);
   }
-  return collection.toArray();
+  const items = await collection.toArray();
+  return {
+    type: "FeatureCollection",
+    features: items.map((item) => ({
+      type: "Feature",
+      id: item.id,
+      geometry: item.geometry,
+      properties: {
+        id: item.id,
+        event_type: item.event_type,
+        severity: item.severity,
+        data_source: item.data_source,
+        started_at: item.started_at,
+        metadata: item.metadata || {},
+      },
+    })),
+  };
 }
 
 // ---- Snapshots ----

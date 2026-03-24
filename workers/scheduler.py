@@ -14,6 +14,7 @@ from ingestion.earthquake_worker import EarthquakeWorker
 from ingestion.satellite_worker import SatelliteWorker
 from ingestion.webcam_worker import WebcamWorker
 from ingestion.event_worker import EventWorker
+from ingestion.ucdp_worker import UcdpWorker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,6 +71,10 @@ def main():
     scheduler.add_job(safe_run(event),
                       IntervalTrigger(minutes=int(os.getenv("EVENT_POLL_MINUTES", "60"))),
                       id="event", max_instances=1, coalesce=True)
+
+    scheduler.add_job(safe_run(ucdp),
+                      IntervalTrigger(hours=int(os.getenv("UCDP_POLL_HOURS", "24"))),
+                      id="ucdp", max_instances=1, coalesce=True)
 
     logger.info("Starting OSINT Earth worker scheduler…")
     logger.info("Registered jobs: %s", [j.id for j in scheduler.get_jobs()])

@@ -1,5 +1,12 @@
 FROM node:20-alpine AS build
 WORKDIR /app
+# Vite inlines VITE_* at build time — runtime env on the nginx container does not change the bundle.
+ARG VITE_CESIUM_ION_TOKEN=
+ARG VITE_API_URL=
+ARG VITE_WS_URL=
+ENV VITE_CESIUM_ION_TOKEN=$VITE_CESIUM_ION_TOKEN
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_WS_URL=$VITE_WS_URL
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
 COPY frontend/ .

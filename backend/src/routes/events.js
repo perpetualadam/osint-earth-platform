@@ -12,19 +12,53 @@ router.get("/", async (req, res, next) => {
   try {
     const { pool } = req.app.locals;
     const { where, params, nextParam } = buildSpatialFilter(req.query);
+    const whereSql = where ? `${where} AND location IS NOT NULL` : "WHERE location IS NOT NULL";
     const limit = Math.min(parseInt(req.query.limit || "500", 10), 5000);
     const offset = parseInt(req.query.offset || "0", 10);
+    const dedupe = req.query.dedupe === "1" || req.query.dedupe === "true";
 
-    const sql = `
-      SELECT id, event_type, title, description, severity, source, source_id,
-             occurred_at, metadata,
-             ST_AsGeoJSON(location)::json AS geometry,
-             ST_AsGeoJSON(bbox)::json AS bbox_geojson
-      FROM events
-      ${where}
-      ORDER BY occurred_at DESC
-      LIMIT $${nextParam} OFFSET $${nextParam + 1}
-    `;
+    let sql;
+    if (dedupe) {
+      sql = `
+        WITH ranked AS (
+          SELECT id, event_type, title, description, severity, source, source_id,
+                 occurred_at, created_at, metadata, location, bbox,
+                 COUNT(*) OVER (
+                   PARTITION BY source, source_id,
+                     ROUND(ST_X(location)::numeric, 2),
+                     ROUND(ST_Y(location)::numeric, 2)
+                 ) AS merged_count,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY source, source_id,
+                     ROUND(ST_X(location)::numeric, 2),
+                     ROUND(ST_Y(location)::numeric, 2)
+                   ORDER BY id
+                 ) AS rn
+          FROM events
+          ${whereSql}
+        )
+        SELECT id, event_type, title, description, severity, source, source_id,
+               occurred_at, metadata,
+               ST_AsGeoJSON(location)::json AS geometry,
+               ST_AsGeoJSON(bbox)::json AS bbox_geojson,
+               merged_count
+        FROM ranked
+        WHERE rn = 1
+        ORDER BY GREATEST(occurred_at, created_at) DESC NULLS LAST
+        LIMIT $${nextParam} OFFSET $${nextParam + 1}
+      `;
+    } else {
+      sql = `
+        SELECT id, event_type, title, description, severity, source, source_id,
+               occurred_at, metadata,
+               ST_AsGeoJSON(location)::json AS geometry,
+               ST_AsGeoJSON(bbox)::json AS bbox_geojson
+        FROM events
+        ${whereSql}
+        ORDER BY GREATEST(occurred_at, created_at) DESC NULLS LAST
+        LIMIT $${nextParam} OFFSET $${nextParam + 1}
+      `;
+    }
     const { rows } = await pool.query(sql, [...params, limit, offset]);
 
     const geojson = {
@@ -43,6 +77,7 @@ router.get("/", async (req, res, next) => {
           source_id: r.source_id,
           occurred_at: r.occurred_at,
           metadata: r.metadata,
+          ...(r.merged_count != null && r.merged_count > 1 && { merged_count: r.merged_count }),
         },
       })),
     };

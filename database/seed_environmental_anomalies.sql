@@ -1,0 +1,11 @@
+-- =============================================================================
+-- Environmental events & anomalies – real data only (no sample/mock data)
+-- Run: psql -U osint -d osint_earth -h localhost -p 5433 -f database/seed_environmental_anomalies.sql
+--
+-- This file does not insert sample data. For real data, use:
+--   python scripts/seed_environmental_anomalies.py
+-- (Requires FIRMS_MAP_KEY for wildfires; USGS earthquakes need no key.
+--  Anomalies come from the AI service scanning ship/aircraft/event data.)
+--
+-- Kept for Docker init compatibility; tables remain empty until seed script runs.
+-- =============================================================================

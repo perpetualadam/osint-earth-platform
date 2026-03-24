@@ -40,7 +40,7 @@ Everything needed to run the OSINT Earth Platform locally and deploy it online.
 | **OPENSKY_USERNAME** | OpenSky Network | Free | Aircraft worker (higher rate limits) | Register at https://opensky-network.org/index.php/login |
 | **OPENSKY_PASSWORD** | OpenSky Network | Free | Aircraft worker | Same as above |
 | **WINDY_API_KEY** | Windy.com | Free (1000 req/day) | Webcam worker | https://api.windy.com |
-| **VITE_CESIUM_ION_TOKEN** | Cesium Ion | Free (75K tiles/month) | 3D terrain, Sentinel-2 imagery | Register at https://ion.cesium.com/tokens. For Sentinel-2 layer: add asset 3954 at https://cesium.com/ion/assetdepot/3954 |
+| **VITE_CESIUM_ION_TOKEN** | Cesium Ion | Free (75K tiles/month) | 3D terrain, Sentinel-2 imagery | Go to https://ion.cesium.com/tokens → sign in → create a token (or use default) → copy it → put in .env as `VITE_CESIUM_ION_TOKEN=your_token`. For Sentinel-2: add asset 3954 at https://cesium.com/ion/assetdepot/3954 |
 
 ### Optional (Unlock Additional Data)
 
@@ -89,7 +89,7 @@ SENTINEL_HUB_CLIENT_SECRET=<optional>
 POSTGRES_DB=osint_earth
 POSTGRES_USER=osint
 API_PORT=3001
-CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+CORS_ORIGINS=http://localhost:8080,http://localhost:5173,http://localhost:3000
 ```
 
 ---
@@ -113,7 +113,8 @@ Services available after startup:
 
 | Service | URL | Purpose |
 |---------|-----|---------|
-| Frontend | http://localhost:5173 | CesiumJS 3D globe UI |
+| Frontend (Docker SPA) | http://localhost:8080 | CesiumJS 3D globe (compose maps host 8080 → container 80) |
+| Frontend (Vite dev) | http://localhost:5173 | Local dev with HMR (`npm run dev` in `frontend/`) |
 | Backend API | http://localhost:3001/api/health | REST API |
 | Nginx Proxy | http://localhost | Reverse proxy (production-like) |
 | MinIO Console | http://localhost:9001 | Object storage UI |
@@ -335,7 +336,7 @@ curl -X POST http://localhost:3001/api/offline/package \
 # Expected: JSON with tile_count, urls array
 
 # 7. Frontend loads
-# Open http://localhost:5173 — should see 3D globe
+# Open http://localhost:8080 (Docker SPA) or http://localhost:5173 (Vite dev) — should see 3D globe
 
 # 8. MinIO has buckets
 curl http://localhost:9000/minio/health/live

@@ -260,6 +260,17 @@ class TestReplayCapture:
 
 
 # ---------------------------------------------------------------------------
+# UCDP GED worker
+# ---------------------------------------------------------------------------
+class TestUcdpWorker:
+    def test_skips_without_token(self, monkeypatch):
+        monkeypatch.delenv("UCDP_ACCESS_TOKEN", raising=False)
+        from ingestion.ucdp_worker import UcdpWorker
+
+        UcdpWorker().run()
+
+
+# ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 class TestConfig:

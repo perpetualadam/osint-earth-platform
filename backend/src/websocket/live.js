@@ -1,9 +1,14 @@
-const CHANNELS = ["aircraft:live", "ships:live", "events:new", "anomalies:new"];
+import { ingest } from "../services/notificationService.js";
+
+const CHANNELS = ["aircraft:live", "ships:live", "events:new", "anomalies:new", "telegram:new"];
+const NOTIFICATION_CHANNELS = ["events:new", "anomalies:new"];
 
 /**
  * Bridge Redis pub/sub messages to connected Socket.io clients.
  * Workers publish JSON payloads to these Redis channels; the API
  * server fans them out to browsers via WebSocket.
+ * events:new and anomalies:new are also fed to the notification service
+ * for merged (deduplicated) Telegram + browser notifications.
  */
 export function setupWebSocket(io, redisSub) {
   for (const ch of CHANNELS) {
@@ -11,11 +16,16 @@ export function setupWebSocket(io, redisSub) {
   }
 
   redisSub.on("message", (channel, message) => {
+    let data;
     try {
-      const data = JSON.parse(message);
-      io.emit(channel, data);
+      data = JSON.parse(message);
     } catch {
-      io.emit(channel, message);
+      data = message;
+    }
+    io.emit(channel, data);
+
+    if (NOTIFICATION_CHANNELS.includes(channel)) {
+      ingest(channel, typeof data === "object" ? data : {}, io);
     }
   });
 

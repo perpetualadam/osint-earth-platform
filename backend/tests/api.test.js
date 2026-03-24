@@ -28,6 +28,12 @@ async function post(path, body) {
 // Health
 // ---------------------------------------------------------------------------
 describe("Health", () => {
+  it("GET /api/health/live returns ok without DB", async () => {
+    const { status, data } = await get("/api/health/live");
+    assert.equal(status, 200);
+    assert.equal(data.status, "ok");
+  });
+
   it("GET /api/health returns ok", async () => {
     const { status, data } = await get("/api/health");
     assert.equal(status, 200);
@@ -229,5 +235,23 @@ describe("Tiles API", () => {
   it("GET /api/tiles/:sat/:z/:x/:y returns 404 for missing tile", async () => {
     const { status } = await get("/api/tiles/sentinel-2/0/0/0");
     assert.equal(status, 404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Telegram ingest API
+// ---------------------------------------------------------------------------
+describe("Telegram API", () => {
+  it("GET /api/telegram/geojson returns FeatureCollection", async () => {
+    const { status, data } = await get("/api/telegram/geojson?limit=5");
+    assert.equal(status, 200);
+    assert.equal(data.type, "FeatureCollection");
+    assert(Array.isArray(data.features));
+  });
+
+  it("GET /api/telegram/posts returns posts array", async () => {
+    const { status, data } = await get("/api/telegram/posts?limit=5");
+    assert.equal(status, 200);
+    assert(Array.isArray(data.posts));
   });
 });

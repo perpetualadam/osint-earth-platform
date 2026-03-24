@@ -1,3 +1,21 @@
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 16px;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  border-radius: 4px;
+  z-index: 1000;
+  transition: top 0.2s;
+}
+.skip-link:focus {
+  top: 12px;
+  outline: 2px solid white;
+  outline-offset: 2px;
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -23,6 +41,77 @@
   letter-spacing: 0.5px;
 }
 
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-theme-btn,
+.app-layers-toggle {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-theme-btn:hover,
+.app-layers-toggle:hover {
+  background: var(--accent);
+  color: white;
+}
+
+/* Touch-friendly: minimum 44px tap targets */
+.app-theme-btn,
+.app-layers-toggle {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+@media (max-width: 768px) {
+  .app-header { padding: 0 12px; }
+  .app-title { font-size: 14px; }
+  .app-header-actions { gap: 8px; }
+  .layer-manager {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 50;
+    box-shadow: 4px 0 12px rgba(0,0,0,0.3);
+    width: min(260px, 85vw);
+  }
+  .event-panel {
+    width: min(300px, 100vw);
+    max-height: 70vh;
+  }
+  .timeline-bar {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+  }
+  .tl-slider {
+    min-height: 28px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .lm-layer-row {
+    padding: 8px 0;
+  }
+  .lm-layer {
+    min-height: 44px;
+    align-items: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-header-actions { flex-wrap: wrap; }
+  .conn-status .conn-label { display: none; }
+}
+
 .app-body {
   display: flex;
   flex: 1;
@@ -37,6 +126,13 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+/* Timeline + replay sit in the column after the globe; keep them above the fold */
+.app-globe .timeline-bar,
+.app-globe .replay-controls {
+  flex-shrink: 0;
+  z-index: 15;
 }
 
 .app-attribution {

@@ -6,8 +6,13 @@ RUN apt-get update && \
         libgdal-dev libgl1 libglib2.0-0 gcc g++ && \
     rm -rf /var/lib/apt/lists/*
 
+# CPU PyTorch first: avoids pulling ~2GB NVIDIA CUDA wheels when ultralytics is installed.
+# Keeps image smaller and builds faster on typical dev machines.
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
 COPY ai_modules/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# only-if-needed keeps the CPU torch above unless a pin truly requires an upgrade
+RUN pip install --no-cache-dir -r requirements.txt --upgrade-strategy only-if-needed
 
 COPY ai_modules/ .
 

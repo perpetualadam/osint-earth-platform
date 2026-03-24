@@ -251,3 +251,27 @@ CREATE TABLE offline_regions (
 );
 
 CREATE INDEX idx_offline_bbox ON offline_regions USING GIST (bbox);
+
+-- ---------------------------------------------------------------------------
+-- telegram_posts – channel ingest (MTProto)
+-- ---------------------------------------------------------------------------
+CREATE TABLE telegram_posts (
+    id                  BIGSERIAL PRIMARY KEY,
+    telegram_message_id BIGINT NOT NULL,
+    channel_id          BIGINT NOT NULL,
+    channel_username    TEXT,
+    text                TEXT,
+    text_en             TEXT,
+    posted_at           TIMESTAMPTZ NOT NULL,
+    lon                 DOUBLE PRECISION,
+    lat                 DOUBLE PRECISION,
+    location            GEOMETRY(Point, 4326),
+    geo_confidence      REAL,
+    metadata            JSONB DEFAULT '{}',
+    created_at          TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (channel_id, telegram_message_id)
+);
+
+CREATE INDEX idx_telegram_posts_geom ON telegram_posts USING GIST (location);
+CREATE INDEX idx_telegram_posts_time ON telegram_posts USING BRIN (posted_at);
+CREATE INDEX idx_telegram_posts_channel ON telegram_posts (channel_id, posted_at DESC);

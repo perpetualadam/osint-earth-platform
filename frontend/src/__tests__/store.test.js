@@ -22,6 +22,7 @@ describe("useStore", () => {
         heatmap_quakes: false,
         heatmap_shipping: false,
         heatmap_air: false,
+        telegram: true,
       },
       selectedEvent: null,
       isPlaying: false,

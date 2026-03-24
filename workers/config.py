@@ -34,3 +34,8 @@ OPENWEBCAMDB_API_KEY = os.getenv("OPENWEBCAMDB_API_KEY", "")
 AISSTREAM_API_KEY = os.getenv("AISSTREAM_API_KEY", "")
 SENTINEL_HUB_CLIENT_ID = os.getenv("SENTINEL_HUB_CLIENT_ID", "")
 SENTINEL_HUB_CLIENT_SECRET = os.getenv("SENTINEL_HUB_CLIENT_SECRET", "")
+
+# UCDP GED API — https://ucdp.uu.se/apidocs/ (token via maintainer; header x-ucdp-access-token)
+UCDP_ACCESS_TOKEN = os.getenv("UCDP_ACCESS_TOKEN", "")
+UCDP_API_BASE = os.getenv("UCDP_API_BASE", "https://ucdpapi.pcr.uu.se/api")
+UCDP_API_VERSION = os.getenv("UCDP_API_VERSION", "25.1")

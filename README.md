@@ -52,7 +52,7 @@ docker compose logs -f
 ```
 
 The platform will be available at:
-- **Frontend**: http://localhost (via Nginx) or http://localhost:5173 (Vite dev)
+- **Frontend**: http://localhost (main Nginx), http://localhost:8080 (Docker-built SPA), or http://localhost:5173 (`npm run dev` / Vite)
 - **API**: http://localhost:3001
 - **MinIO Console**: http://localhost:9001
 - **AI Service**: http://localhost:8000/docs
@@ -75,6 +75,45 @@ cd workers
 pip install -r requirements.txt
 python scheduler.py
 ```
+
+### Seeding Environmental Events & Anomalies (Real Data Only)
+
+To populate `environmental_events` (wildfires, earthquakes) and `anomalies` with **real data**:
+
+```bash
+# Python script (real USGS earthquakes, real NASA FIRMS wildfires when key is set)
+# Requires: pip install psycopg2 requests; set FIRMS_MAP_KEY for wildfires (free at firms.modaps.eosdis.nasa.gov/api/map_key/)
+# Windows: $env:POSTGRES_PORT="5433"; python scripts/seed_environmental_anomalies.py
+# Linux/Mac: POSTGRES_PORT=5433 python scripts/seed_environmental_anomalies.py
+```
+
+| Data source | How to get real data |
+|-------------|----------------------|
+| **Earthquakes** | Script fetches from USGS (no API key). |
+| **Wildfires** | Set `FIRMS_MAP_KEY` in `.env`; script fetches from NASA FIRMS. Or run workers: `python scheduler.py` with `FIRMS_MAP_KEY` and `WILDFIRE_POLL_MINUTES` set. |
+| **Anomalies** | Run the AI service and call `POST /scan` with ship/aircraft/event data in the DB (from workers). Or run `python scripts/seed_environmental_anomalies.py` with the AI service running—it will trigger a scan. |
+
+Port 5433 is used because Docker maps Postgres to that port on the host.
+
+### Layer Architecture (Toggle vs Data)
+
+| Toggle | Data source | When it runs |
+|--------|-------------|--------------|
+| **Anomalies** | Fetches from DB | Toggle only shows/hides. Data must be populated first by running the AI service and `POST /anomaly/scan`, or by running the Python seed script (which triggers a scan). |
+| **Events** | `events` table (GDELT, ACLED) | Separate from wildfires/earthquakes. News and conflict events. |
+| **Wildfires / Earthquakes** | `environmental_events` table | NASA FIRMS + USGS. Run seed script or workers. |
+| **Fire Density** | Heatmap of wildfire hotspots | Same underlying data as Wildfires, shown as density ellipses. Last 7 days. |
+| **Numbers on clusters** | Entity count | When zoomed out, nearby markers cluster. The number is how many entities are in that cluster. Zoom in to see individuals; click for detail panel. |
+
+### Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| **404 on `/api/environmental`, `/api/anomalies`, or `/api/ai/anomaly/scan`** | Rebuild the backend so new routes are included: `cd infrastructure && docker compose build backend && docker compose up -d backend`. For local dev: `cd backend && npm run dev`. |
+| **Duplicate `VITE_CESIUM_ION_TOKEN` in .env** | Keep only one. Remove the duplicate line. The last occurrence wins, but duplicates can cause confusion. |
+| **Cesium 401 / "Mesh buffer doesn't exist"** | Set a valid `VITE_CESIUM_ION_TOKEN` in `.env` (get one at [ion.cesium.com](https://ion.cesium.com/tokens)). If the token is expired or invalid, terrain will fail; the app falls back to flat terrain. |
+| **Empty wildfires/earthquakes** | Run the seed script (see above) or ensure workers have `FIRMS_MAP_KEY` and USGS access configured. |
+| **Toggles don't match what's shown** | "Events" = GDELT/ACLED (news, conflict). "Wildfires"/"Earthquakes" = NASA/USGS from a different table. They are separate data sources. Heatmaps show density of the same underlying data. |
 
 ## Project Structure
 
@@ -114,7 +153,7 @@ Most data sources offer free tiers. Required keys:
 Optional:
 - **OPENSKY_USERNAME/PASSWORD** — https://opensky-network.org (free, higher rate limits)
 - **SENTINEL_HUB_CLIENT_ID/SECRET** — https://www.sentinel-hub.com (free trial)
-- **VITE_CESIUM_ION_TOKEN** — https://ion.cesium.com (free tier)
+- **VITE_CESIUM_ION_TOKEN** — Your Cesium Ion access token. Get it at [ion.cesium.com/tokens](https://ion.cesium.com/tokens): sign in → create a token (or use the default) → copy it. Paste into `.env` as `VITE_CESIUM_ION_TOKEN=your_token_here`. The "VITE_" prefix is just this project's env var name; Cesium Ion doesn't have a separate "VITE" option.
 
 ## Infrastructure Cost
 

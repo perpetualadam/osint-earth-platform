@@ -83,6 +83,13 @@
 - **Auth**: Free API key for researchers
 - **Data**: Conflict events, actors, fatalities, event types
 
+### UCDP GED (Uppsala Conflict Data Program — Georeferenced Event Dataset)
+- **API docs**: [UCDP API](https://ucdp.uu.se/apidocs/) — REST JSON, versioned paths (`/api/gedevents/<version>`)
+- **Auth**: HTTP header `x-ucdp-access-token` (token from the API maintainer; described in the docs)
+- **Platform env**: `UCDP_ACCESS_TOKEN`, optional `UCDP_API_VERSION` (e.g. `25.1`), `UCDP_SYNC_DAYS`, `UCDP_MAX_PAGES_PER_RUN`, `UCDP_POLL_HOURS` (see `.env.example`)
+- **Quota**: 5,000 requests/day (errors count); the worker defaults to a modest page cap per run
+- **Ingest**: `workers/ingestion/ucdp_worker.py` → `events` with `source=ucdp_ged`, `source_id=relid`
+
 ## Webcams
 
 ### Windy Webcams
