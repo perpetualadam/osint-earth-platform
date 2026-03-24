@@ -78,6 +78,30 @@ router.get("/geojson", async (req, res, next) => {
   }
 });
 
+router.get("/posts/:id", async (req, res, next) => {
+  try {
+    const { pool } = req.app.locals;
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    const { rows } = await pool.query(
+      `SELECT id, telegram_message_id, channel_id, channel_username, text, text_en,
+              posted_at, lon, lat, geo_confidence, metadata,
+              ST_AsGeoJSON(location)::json AS geometry
+       FROM telegram_posts WHERE id = $1`,
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.code === "42P01" || /telegram_posts/.test(err.message || "")) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    next(err);
+  }
+});
+
 router.get("/posts", async (req, res, next) => {
   try {
     const { pool } = req.app.locals;

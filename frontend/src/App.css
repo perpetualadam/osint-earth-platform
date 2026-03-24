@@ -66,6 +66,26 @@
   color: white;
 }
 
+.app-sources-btn,
+.app-share-btn {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  padding: 0 12px;
+  height: 32px;
+  min-height: 44px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+}
+
+.app-sources-btn:hover,
+.app-share-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+
 /* Touch-friendly: minimum 44px tap targets */
 .app-theme-btn,
 .app-layers-toggle {
@@ -110,6 +130,47 @@
 @media (max-width: 480px) {
   .app-header-actions { flex-wrap: wrap; }
   .conn-status .conn-label { display: none; }
+}
+
+.entity-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.entity-popup {
+  max-height: min(88vh, 900px);
+  width: min(420px, 100%);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.entity-popup .event-panel {
+  width: 100%;
+  max-height: min(88vh, 900px);
+  overflow-y: auto;
+  margin: 0;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+}
+
+@media (min-width: 900px) {
+  .entity-popup-backdrop {
+    align-items: center;
+    justify-content: flex-end;
+    padding: 24px;
+  }
+  .entity-popup {
+    width: min(400px, 40vw);
+  }
 }
 
 .app-body {

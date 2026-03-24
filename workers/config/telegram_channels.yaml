@@ -5,54 +5,6 @@
 #   - "another_channel"
 
 channels:
-  - username: geopolitcs_prime
-  - username: us_foreign_policy
-  - username: russia_watch
-  - username: china_watch
-  - username: india_watch
-  - username: japan_watch
-  - username: korea_watch
-  - username: australia_watch
-  - username: canada_watch
-  - username: europe_watch
-  - username: asia_watch
-  - username: africa_watch
-  - username: latin_america_watch 
-  - username: middle_east_watch
-  - username: south_america_watch
-  - username: north_america_watch
-  - username: oceania_watch
-  - username: antarctica_watch
-  - username: international_watch
-  - username: global_watch
-  - username: world_watch
-  - username: global_watch
-  - username: politics_watch
-  - username: economy_watch
-  - username: technology_watch
-  - username: science_watch
-  - username: environment_watch
-  - username: health_watch
-  - username: defense_watch
-  - username: diplomacy_watch
-  - username: international_relations_watch
-  - username: global_politics_watch
-  - username: world_politics_watch
-  - username: global_economy_watch
-  - username: world_economy_watch
-  - username: global_technology_watch
-  - username: world_technology_watch
-  - username: global_science_watch
-  - username: world_science_watch
-  - username: global_environment_watch
-  - username: world_environment_watch
-  - username: global_health_watch
-  - username: world_health_watch
-  - username: global_defense_watch
-  - username: world_defense_watch
-  - username: global_diplomacy_watch
-  - username: world_diplomacy_watch
-  - username: global_international_relations_watch
   - username: BBC_News0
   - username: aljazeeraglobal
   - username: sitrep
@@ -60,6 +12,7 @@ channels:
   - username: associated_press_news
   - username: molfar_global
   - username: OSINTdefender
+  - username: ClashReport
 
 
 

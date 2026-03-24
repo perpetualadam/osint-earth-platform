@@ -4,6 +4,8 @@
  * builds rich snippets (country, summary, type, time, date), sends to Telegram.
  * Deduplicates by tracking last_sent timestamp in Redis.
  */
+import { escapeHtml, mapOpenHref } from "../lib/digestHtml.js";
+
 const DIGEST_INTERVAL_MS = parseInt(process.env.NOTIFICATION_DIGEST_MINUTES || "15", 10) * 60 * 1000;
 const MAX_EVENTS_PER_DIGEST = 20;
 const MAX_ANOMALIES_PER_DIGEST = 5;
@@ -94,9 +96,27 @@ function buildEventSnippet(row) {
   const date = formatDate(row.occurred_at);
   const source = (row.source || "").trim() || "—";
   const base = appBaseUrl();
-  const openLine = base ? `\n🔗 Open in app: ${base}?event=${row.id}` : "";
+  const openLine = base ? `\n🔗 Open in app: ${mapOpenHref(base, "event", row.id)}` : "";
   const headBlock = headline ? `${headline}\n` : "";
   return `📍 ${country}\n${headBlock}${summary}\nSource: ${source} · Type: ${type}\nWhen: ${time} · ${date}\nDB id: ${row.id}${openLine}`;
+}
+
+function buildEventSnippetHtml(row) {
+  const base = appBaseUrl();
+  const meta = row.metadata || {};
+  const summaryPlain = getSummary(row);
+  const country = escapeHtml(getCountry(meta) || "Location unknown");
+  const summary = escapeHtml(summaryPlain);
+  const headline = extraHeadline(row, summaryPlain);
+  const headBlock = headline ? `<b>${escapeHtml(headline)}</b>\n` : "";
+  const type = escapeHtml((row.event_type || "event").replace(/^\w/, (c) => c.toUpperCase()));
+  const time = escapeHtml(formatTime(row.occurred_at));
+  const date = escapeHtml(formatDate(row.occurred_at));
+  const source = escapeHtml((row.source || "").trim() || "—");
+  const linkLine = base
+    ? `\n<a href="${escapeHtml(mapOpenHref(base, "event", row.id))}">Open in map · #${escapeHtml(String(row.id))}</a>`
+    : `\n<code>${escapeHtml(String(row.id))}</code>`;
+  return `📍 ${country}\n${headBlock}${summary}\nSource: ${source} · Type: ${type}\nWhen: ${time} · ${date}${linkLine}`;
 }
 
 const ANOMALY_DESCRIPTIONS = {
@@ -136,8 +156,25 @@ function buildAnomalySnippet(row) {
     ? descFn(row)
     : meta.description || meta.summary || `Unusual pattern detected. Score: ${row.score?.toFixed(1) ?? "—"}/10.`;
   const base = appBaseUrl();
-  const openLine = base ? `\n🔗 Open in app: ${base}?anomaly=${row.id}` : "";
+  const openLine = base ? `\n🔗 Open in app: ${mapOpenHref(base, "anomaly", row.id)}` : "";
   return `⚠️ ${type}\n${desc}\nWhen: ${time} · ${date}\nDB id: ${row.id}${openLine}`;
+}
+
+function buildAnomalySnippetHtml(row) {
+  const base = appBaseUrl();
+  const type = escapeHtml((row.anomaly_type || "anomaly").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()));
+  const time = escapeHtml(formatTime(row.detected_at));
+  const date = escapeHtml(formatDate(row.detected_at));
+  const meta = row.metadata || {};
+  const descFn = ANOMALY_DESCRIPTIONS[row.anomaly_type];
+  const descPlain = descFn
+    ? descFn(row)
+    : meta.description || meta.summary || `Unusual pattern detected. Score: ${row.score?.toFixed(1) ?? "—"}/10.`;
+  const desc = escapeHtml(descPlain);
+  const linkLine = base
+    ? `\n<a href="${escapeHtml(mapOpenHref(base, "anomaly", row.id))}">Open in map · #${escapeHtml(String(row.id))}</a>`
+    : `\n<code>${escapeHtml(String(row.id))}</code>`;
+  return `⚠️ ${type}\n${desc}\nWhen: ${time} · ${date}${linkLine}`;
 }
 
 async function buildDigest(pool, redis) {
@@ -162,21 +199,25 @@ async function buildDigest(pool, redis) {
     [since, MAX_ANOMALIES_PER_DIGEST]
   );
 
-  if (events.length === 0 && anomalies.length === 0) return { text: null, maxCreated: since };
+  if (events.length === 0 && anomalies.length === 0) return { text: null, html: null, maxCreated: since };
 
   const now = new Date();
   const header = `🌍 OSINT Earth · ${formatTime(now)} · ${formatDate(now)}\n${"─".repeat(28)}`;
 
   const parts = [header];
+  const htmlParts = [`<b>${escapeHtml(`🌍 OSINT Earth · ${formatTime(now)} · ${formatDate(now)}`)}</b>`];
 
   for (const row of events) {
     parts.push("\n" + buildEventSnippet(row));
+    htmlParts.push("\n\n" + buildEventSnippetHtml(row));
   }
 
   if (anomalies.length > 0) {
     parts.push("\n\n⚠️ Anomalies");
+    htmlParts.push(`\n\n<b>${escapeHtml("⚠️ Anomalies")}</b>`);
     for (const row of anomalies) {
       parts.push("\n" + buildAnomalySnippet(row));
+      htmlParts.push("\n\n" + buildAnomalySnippetHtml(row));
     }
   }
 
@@ -194,32 +235,57 @@ async function buildDigest(pool, redis) {
     text = text.slice(0, 3997) + "\n…";
   }
 
+  let html = htmlParts.join("");
+  if (!appBaseUrl()) {
+    html += `\n\n<i>${escapeHtml("Set APP_URL in .env for tap-to-open map links in Telegram.")}</i>`;
+  }
+  if (html.length > 4000) {
+    html = html.slice(0, 3997) + "\n…";
+  }
+
   return {
     text,
+    html,
     maxCreated: maxCreated ? new Date(maxCreated).toISOString() : since,
     eventCount: events.length,
     anomalyCount: anomalies.length,
+    firstEventId: events[0]?.id ?? null,
+    firstAnomalyId: anomalies[0]?.id ?? null,
   };
 }
 
-async function sendTelegram(text) {
+async function sendTelegramPayload(chatId, token, payload) {
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      disable_web_page_preview: true,
+      ...payload,
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    console.warn("Telegram send failed:", res.status, errText);
+    return false;
+  }
+  return true;
+}
+
+async function sendTelegramDigest(html, plain) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatIds = (process.env.TELEGRAM_CHAT_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
   if (!token || chatIds.length === 0) return;
 
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
   for (const chatId of chatIds) {
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text,
-          disable_web_page_preview: true,
-        }),
-      });
-      if (!res.ok) console.warn("Telegram send failed:", res.status, await res.text());
+      if (html) {
+        const ok = await sendTelegramPayload(chatId, token, { text: html, parse_mode: "HTML" });
+        if (ok) continue;
+        console.warn("Telegram HTML digest rejected; sending plain text fallback.");
+      }
+      await sendTelegramPayload(chatId, token, { text: plain });
     } catch (e) {
       console.warn("Telegram send error:", e.message);
     }
@@ -231,12 +297,29 @@ async function sendTelegram(text) {
  */
 export async function runDigest(pool, redis, io) {
   try {
-    const { text, maxCreated, eventCount, anomalyCount } = await buildDigest(pool, redis);
+    const {
+      text,
+      html,
+      maxCreated,
+      eventCount,
+      anomalyCount,
+      firstEventId,
+      firstAnomalyId,
+    } = await buildDigest(pool, redis);
     if (!text) return;
 
-    await sendTelegram(text);
+    await sendTelegramDigest(html, text);
 
     await redis.set(REDIS_KEY_LAST_SENT, maxCreated);
+
+    const base = appBaseUrl();
+    const primaryUrl =
+      base &&
+      (firstEventId != null
+        ? mapOpenHref(base, "event", firstEventId)
+        : firstAnomalyId != null
+          ? mapOpenHref(base, "anomaly", firstAnomalyId)
+          : `${base.replace(/\/$/, "")}/`);
 
     if (io) {
       io.emit("notifications:merged", {
@@ -244,6 +327,7 @@ export async function runDigest(pool, redis, io) {
         body: `${eventCount} events, ${anomalyCount} anomalies`,
         events: { count: eventCount },
         anomalies: anomalyCount,
+        primaryUrl: primaryUrl || null,
       });
     }
   } catch (e) {

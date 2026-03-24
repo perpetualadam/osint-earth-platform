@@ -19,10 +19,18 @@ export function useNotifications(enabled = true) {
       if (Notification.permission !== "granted") return;
       const title = data?.title ?? "OSINT Earth: Updates";
       const body = data?.body ?? "New events and anomalies detected";
-      new Notification(title, {
-        body,
+      const openUrl = typeof data?.primaryUrl === "string" && data.primaryUrl.length > 0 ? data.primaryUrl : null;
+      const n = new Notification(title, {
+        body: openUrl ? `${body}\nClick to open in map.` : body,
         icon: "/favicon.ico",
+        tag: "osint-digest",
+        data: openUrl ? { url: openUrl } : undefined,
       });
+      n.onclick = () => {
+        window.focus();
+        if (openUrl) window.location.href = openUrl;
+        n.close();
+      };
     };
 
     socket.on("notifications:merged", onMerged);

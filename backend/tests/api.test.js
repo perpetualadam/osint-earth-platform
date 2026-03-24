@@ -59,6 +59,24 @@ describe("Events API", () => {
     assert.equal(data.type, "FeatureCollection");
   });
 
+  it("GET /api/events caps rows for very large bbox (world view)", async () => {
+    const { status, data } = await get(
+      "/api/events?bbox=-180,-90,180,90&limit=99999&time_start=2020-01-01&time_end=2030-12-31"
+    );
+    assert.equal(status, 200);
+    assert(Array.isArray(data.features));
+    assert.ok(data.features.length <= 650);
+  });
+
+  it("GET /api/events compact=1 omits description in properties", async () => {
+    const { status, data } = await get("/api/events?limit=3&compact=1");
+    assert.equal(status, 200);
+    for (const f of data.features || []) {
+      assert.ok(f.properties);
+      assert.equal(Object.prototype.hasOwnProperty.call(f.properties, "description"), false);
+    }
+  });
+
   it("GET /api/events supports time range filter", async () => {
     const { status, data } = await get(
       "/api/events?time_start=2020-01-01&time_end=2030-01-01&limit=5"

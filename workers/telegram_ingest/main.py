@@ -77,14 +77,52 @@ def _posted_at(message):
     return d.astimezone(timezone.utc)
 
 
+def _message_text(message: Message) -> str:
+    """Caption on photos/video counts as text for geocoding and display."""
+    return (message.text or message.caption or "").strip()
+
+
+def _media_meta(message: Message) -> dict:
+    out = {}
+    if message.video:
+        out["type"] = "video"
+        out["duration_sec"] = getattr(message.video, "duration", None)
+        out["file_id"] = getattr(message.video, "file_id", None)
+    elif message.document:
+        out["type"] = "document"
+        out["mime_type"] = getattr(message.document, "mime_type", None)
+        out["file_id"] = getattr(message.document, "file_id", None)
+    elif message.photo:
+        out["type"] = "photo"
+        out["sizes"] = len(message.photo) if message.photo else 0
+    return out
+
+
+def _build_metadata_dict(message: Message) -> dict:
+    d = {
+        "message_id": message.id,
+        "chat_id": message.chat.id,
+        "views": getattr(message, "views", None),
+    }
+    media = _media_meta(message)
+    if media:
+        d["media"] = media
+    un = message.chat.username
+    if un:
+        d["telegram_url"] = f"https://t.me/{un}/{message.id}"
+    return d
+
+
 def ingest_one_message(message: Message, conn, rds, min_geo, *, do_translate: bool, publish: bool) -> bool:
     """
     Parse, optionally translate, geocode, insert. Returns True if a new DB row was inserted.
     """
-    if not message.text:
+    text = _message_text(message)
+    if not text and not (message.video or message.document or message.photo):
         return False
-    text = message.text or ""
-    text_en = maybe_translate(text) if do_translate else None
+    if not text:
+        text = "[media]"
+    text_en = maybe_translate(text) if do_translate and text != "[media]" else None
     lon, lat, gconf = enrich_location(text, min_confidence=min_geo)
     posted = _posted_at(message)
     if posted is None:
@@ -100,11 +138,7 @@ def ingest_one_message(message: Message, conn, rds, min_geo, *, do_translate: bo
         "lat": lat,
         "geo_confidence": gconf if lon is not None else None,
         "metadata": json.dumps(
-            {
-                "message_id": message.id,
-                "chat_id": message.chat.id,
-                "views": getattr(message, "views", None),
-            }
+            _build_metadata_dict(message)
         ),
     }
     try:
@@ -144,7 +178,7 @@ async def backfill_channel_history(app, conn, rds, channel_username, cutoff_utc,
     for attempt in range(4):
         try:
             async for message in app.get_chat_history(chat.id, limit=0):
-                if not message.text:
+                if not _message_text(message) and not (message.video or message.document or message.photo):
                     continue
                 posted = _posted_at(message)
                 if posted is not None and posted < cutoff_utc:

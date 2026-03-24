@@ -1,0 +1,10 @@
+[
+  {
+    "id": "demo-line",
+    "label": "Example control line (demo)",
+    "validFrom": "2020-01-01T00:00:00.000Z",
+    "validTo": "2030-12-31T23:59:59.999Z",
+    "file": "demo_control.geojson",
+    "license": "Synthetic geometry for integration testing only."
+  }
+]

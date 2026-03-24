@@ -1,0 +1,13 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Demo buffer zone", "note": "Replace with real weekly snapshots; timeline picks the entry whose [validFrom,validTo] contains map end time." },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[35.0, 49.0], [38.0, 49.0], [38.0, 47.5], [35.0, 47.5], [35.0, 49.0]]]
+      }
+    }
+  ]
+}

@@ -17,6 +17,13 @@ export const useStore = create((set) => ({
     heatmap_shipping: false,
     heatmap_air: false,
     telegram: true,
+    ctx_admin0: false,
+    ctx_airports: false,
+    ctx_ports: false,
+    ctx_military: false,
+    ctx_crossings: false,
+    ctx_energy: false,
+    territorial: false,
   },
   toggleLayer: (key) =>
     set((s) => ({ layers: { ...s.layers, [key]: !s.layers[key] } })),
@@ -31,6 +38,22 @@ export const useStore = create((set) => ({
   // Event filters (event_type, source, severity_min)
   eventFilters: { dedupe: true, event_type: "", source: "", severity_min: "" },
   setEventFilters: (f) => set((s) => ({ eventFilters: { ...s.eventFilters, ...f } })),
+
+  /** [west, south, east, north] in degrees — updated from globe camera (debounced) */
+  mapBbox: null,
+  setMapBbox: (bbox) => set({ mapBbox: bbox }),
+
+  /** all | military | interesting — passed to /api/aircraft and client filter for live socket */
+  aircraftPreset: "all",
+  setAircraftPreset: (preset) => set({ aircraftPreset: preset || "all" }),
+  aircraftCallsignPrefix: "",
+  setAircraftCallsignPrefix: (s) => set({ aircraftCallsignPrefix: s || "" }),
+  aircraftMinAltitude: "",
+  setAircraftMinAltitude: (s) => set({ aircraftMinAltitude: s }),
+  aircraftMaxAltitude: "",
+  setAircraftMaxAltitude: (s) => set({ aircraftMaxAltitude: s }),
+  aircraftMinVelocity: "",
+  setAircraftMinVelocity: (s) => set({ aircraftMinVelocity: s }),
 
   // Selected event for detail panel
   selectedEvent: null,

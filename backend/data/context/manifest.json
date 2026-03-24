@@ -1,0 +1,51 @@
+[
+  {
+    "id": "admin0",
+    "label": "Country borders (admin-0)",
+    "description": "Sovereign country polygons. Default source: Natural Earth 110m (public domain) fetched on first request if local file absent.",
+    "license": "Natural Earth: Public Domain (https://www.naturalearthdata.com/about/terms-of-use/)",
+    "geometryTypes": ["Polygon", "MultiPolygon"],
+    "localFile": "admin0_countries.geojson",
+    "fallbackUrl": "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_admin_0_countries.geojson"
+  },
+  {
+    "id": "airports",
+    "label": "Major airports (sample)",
+    "description": "Sample hub airports for wiring; replace airports.geojson with OurAirports-derived data (ODbL if from OSM) or your own.",
+    "license": "Sample coordinates: factual data; replace file with dataset license you choose.",
+    "geometryTypes": ["Point"],
+    "localFile": "airports_sample.geojson"
+  },
+  {
+    "id": "ports",
+    "label": "Ports (sample)",
+    "description": "Sample seaports; extend with WPI/Natural Earth ports under their terms.",
+    "license": "Sample only",
+    "geometryTypes": ["Point"],
+    "localFile": "ports_sample.geojson"
+  },
+  {
+    "id": "military",
+    "label": "Military installations (placeholder)",
+    "description": "Empty FeatureCollection by default. Add GeoJSON from an openly licensed source (e.g. OSM-derived with ODbL attribution).",
+    "license": "Add your dataset license in metadata when you populate military.geojson",
+    "geometryTypes": ["Point", "Polygon"],
+    "localFile": "military.geojson"
+  },
+  {
+    "id": "crossings",
+    "label": "Border crossings (placeholder)",
+    "description": "Empty by default; populate with vetted open data.",
+    "license": "Your data license",
+    "geometryTypes": ["Point"],
+    "localFile": "crossings.geojson"
+  },
+  {
+    "id": "energy",
+    "label": "Dams / energy / industrial (placeholder)",
+    "description": "Empty by default; consider GEM, EIA, or OSM extracts with attribution.",
+    "license": "Your data license",
+    "geometryTypes": ["Point", "Polygon"],
+    "localFile": "energy.geojson"
+  }
+]

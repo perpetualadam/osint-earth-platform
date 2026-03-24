@@ -1,0 +1,11 @@
+{
+  "type": "FeatureCollection",
+  "name": "ports_sample",
+  "features": [
+    {"type": "Feature", "properties": {"name": "Rotterdam"}, "geometry": {"type": "Point", "coordinates": [4.133, 51.955]}},
+    {"type": "Feature", "properties": {"name": "Singapore"}, "geometry": {"type": "Point", "coordinates": [103.85, 1.26]}},
+    {"type": "Feature", "properties": {"name": "Shanghai"}, "geometry": {"type": "Point", "coordinates": [121.5, 31.23]}},
+    {"type": "Feature", "properties": {"name": "Los Angeles"}, "geometry": {"type": "Point", "coordinates": [-118.27, 33.72]}},
+    {"type": "Feature", "properties": {"name": "Hamburg"}, "geometry": {"type": "Point", "coordinates": [9.99, 53.55]}}
+  ]
+}

@@ -18,6 +18,8 @@ import {
   HorizontalOrigin,
   NearFarScalar,
   Math as CesiumMath,
+  GeoJsonDataSource,
+  Rectangle,
 } from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import { useStore } from "../hooks/useStore";
@@ -25,6 +27,23 @@ import { useDebounce } from "../hooks/useDebounce";
 import { offlineApi } from "../services/offlineApi";
 import { api } from "../services/api";
 import { socket } from "../services/socket";
+import { filterAircraftGeojson } from "../utils/aircraftFilters";
+import { thinFeaturesByTimeField } from "../utils/mapThinning";
+
+const MAX_EVENT_ENTITIES = 1_600;
+const MAX_ENV_ENTITIES = 1_200;
+const MAX_TELEGRAM_ENTITIES = 1_000;
+const MAX_ANOMALY_ENTITIES = 450;
+const MAX_TRACKING_ENTITIES = 1_800;
+
+const CONTEXT_LAYER_MAP = {
+  ctx_admin0: "admin0",
+  ctx_airports: "airports",
+  ctx_ports: "ports",
+  ctx_military: "military",
+  ctx_crossings: "crossings",
+  ctx_energy: "energy",
+};
 
 const ESRI_CREDIT = new Credit("Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics");
 const OSM_CREDIT = new Credit("&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>");
@@ -86,13 +105,58 @@ function removeDS(viewer, dsRef, key) {
   }
 }
 
-function enableClustering(ds) {
-  ds.clustering = new EntityCluster({ enabled: true, pixelRange: 60, minimumClusterSize: 2 });
+function clusterOptsFromCamera(viewer) {
+  let pixelRange = 72;
+  let minimumClusterSize = 2;
+  try {
+    if (viewer?.camera) {
+      const carto = viewer.scene.globe.ellipsoid.cartesianToCartographic(viewer.camera.positionWC);
+      const h = carto?.height ?? 0;
+      if (h > 12_000_000) {
+        pixelRange = 128;
+        minimumClusterSize = 4;
+      } else if (h > 8_000_000) {
+        pixelRange = 104;
+        minimumClusterSize = 3;
+      } else if (h > 5_000_000) {
+        pixelRange = 88;
+        minimumClusterSize = 3;
+      } else if (h < 1_200_000) {
+        pixelRange = 40;
+        minimumClusterSize = 2;
+      } else if (h < 2_500_000) {
+        pixelRange = 48;
+        minimumClusterSize = 2;
+      }
+    }
+  } catch (_) {}
+  return { pixelRange, minimumClusterSize };
+}
+
+function enableClustering(ds, viewer) {
+  const { pixelRange, minimumClusterSize } = clusterOptsFromCamera(viewer);
+  ds.clustering = new EntityCluster({ enabled: true, pixelRange, minimumClusterSize });
   ds.clustering.clusterEvent.addEventListener((entities, cluster) => {
     cluster.label.show = true;
     cluster.label.text = entities.length.toLocaleString();
     if (cluster.billboard) cluster.billboard.id = entities;
   });
+}
+
+function updateAllDataSourceClustering(viewer) {
+  if (!viewer?.dataSources || viewer.isDestroyed()) return;
+  const { pixelRange, minimumClusterSize } = clusterOptsFromCamera(viewer);
+  const n = viewer.dataSources.length;
+  let changed = false;
+  for (let i = 0; i < n; i++) {
+    const ds = viewer.dataSources.get(i);
+    if (ds.clustering?.enabled) {
+      ds.clustering.pixelRange = pixelRange;
+      ds.clustering.minimumClusterSize = minimumClusterSize;
+      changed = true;
+    }
+  }
+  if (changed) viewer.scene.requestRender();
 }
 
 const M_TO_FT = 3.28084;
@@ -124,6 +188,13 @@ const GlobeViewer = forwardRef((_props, ref) => {
   const anomaliesRefreshTrigger = useStore((s) => s.anomaliesRefreshTrigger);
   const telegramRefreshTrigger = useStore((s) => s.telegramRefreshTrigger);
   const eventFilters = useStore((s) => s.eventFilters);
+  const mapBbox = useStore((s) => s.mapBbox);
+  const debouncedMapBbox = useDebounce(mapBbox, 500);
+  const aircraftPreset = useStore((s) => s.aircraftPreset);
+  const aircraftCallsignPrefix = useStore((s) => s.aircraftCallsignPrefix);
+  const aircraftMinAltitude = useStore((s) => s.aircraftMinAltitude);
+  const aircraftMaxAltitude = useStore((s) => s.aircraftMaxAltitude);
+  const aircraftMinVelocity = useStore((s) => s.aircraftMinVelocity);
   const selectEvent = useStore((s) => s.selectEvent);
 
   useImperativeHandle(ref, () => ({
@@ -141,6 +212,14 @@ const GlobeViewer = forwardRef((_props, ref) => {
       if (!rect) return null;
       const toDeg = (r) => (r * 180) / Math.PI;
       return [toDeg(rect.west), toDeg(rect.south), toDeg(rect.east), toDeg(rect.north)].join(",");
+    },
+    flyToBounds(west, south, east, north) {
+      const v = viewerRef.current;
+      if (!v?.camera) return;
+      v.camera.flyTo({
+        destination: Rectangle.fromDegrees(west, south, east, north),
+        duration: 1.5,
+      });
     },
   }));
 
@@ -246,6 +325,25 @@ const GlobeViewer = forwardRef((_props, ref) => {
 
     viewerRef.current = viewer;
 
+    let bboxT;
+    const pushBbox = () => {
+      clearTimeout(bboxT);
+      bboxT = setTimeout(() => {
+        if (viewer.isDestroyed()) return;
+        const rect = viewer.camera.computeViewRectangle();
+        if (!rect) return;
+        const toDeg = (r) => (r * 180) / Math.PI;
+        useStore.getState().setMapBbox([
+          toDeg(rect.west),
+          toDeg(rect.south),
+          toDeg(rect.east),
+          toDeg(rect.north),
+        ]);
+      }, 650);
+    };
+    viewer.camera.changed.addEventListener(pushBbox);
+    pushBbox();
+
     const updateHeight = () => {
       const el = heightLabelRef.current;
       if (!el || !viewer.camera) return;
@@ -257,8 +355,19 @@ const GlobeViewer = forwardRef((_props, ref) => {
     viewer.camera.changed.addEventListener(updateHeight);
     updateHeight();
 
+    let clusterT;
+    const onClusterCamera = () => {
+      clearTimeout(clusterT);
+      clusterT = setTimeout(() => updateAllDataSourceClustering(viewer), 200);
+    };
+    viewer.camera.changed.addEventListener(onClusterCamera);
+
     return () => {
+      clearTimeout(bboxT);
+      clearTimeout(clusterT);
+      viewer.camera.changed.removeEventListener(pushBbox);
       viewer.camera.changed.removeEventListener(updateHeight);
+      viewer.camera.changed.removeEventListener(onClusterCamera);
       handler.destroy();
       viewer.destroy();
       viewerRef.current = null;
@@ -316,14 +425,41 @@ const GlobeViewer = forwardRef((_props, ref) => {
       timeStart: debouncedTimeStart,
       timeEnd: debouncedTimeEnd,
       eventFilters,
+      mapBbox: debouncedMapBbox,
+      aircraftPreset,
+      aircraftCallsignPrefix,
+      aircraftMinAltitude,
+      aircraftMaxAltitude,
+      aircraftMinVelocity,
     });
     return () => { cancelled = true; };
-  }, [layers, debouncedTimeStart, debouncedTimeEnd, anomaliesRefreshTrigger, telegramRefreshTrigger, eventFilters]);
+  }, [
+    layers,
+    debouncedTimeStart,
+    debouncedTimeEnd,
+    debouncedMapBbox,
+    anomaliesRefreshTrigger,
+    telegramRefreshTrigger,
+    eventFilters,
+    aircraftPreset,
+    aircraftCallsignPrefix,
+    aircraftMinAltitude,
+    aircraftMaxAltitude,
+    aircraftMinVelocity,
+  ]);
 
   useEffect(() => {
     const onAircraft = (data) => {
       if (!viewerRef.current || !layers.aircraft) return;
-      loadTracking(viewerRef.current, dsRef, "aircraft", data);
+      const st = useStore.getState();
+      const filtered = filterAircraftGeojson(data, {
+        preset: st.aircraftPreset,
+        callsignPrefix: st.aircraftCallsignPrefix,
+        minAltitude: st.aircraftMinAltitude,
+        maxAltitude: st.aircraftMaxAltitude,
+        minVelocity: st.aircraftMinVelocity,
+      });
+      loadTracking(viewerRef.current, dsRef, "aircraft", filtered);
     };
     const onShips = (data) => {
       if (!viewerRef.current || !layers.ships) return;
@@ -342,7 +478,15 @@ const GlobeViewer = forwardRef((_props, ref) => {
       socket.off("ships:live", onShips);
       socket.off("telegram:new", onTelegramNew);
     };
-  }, [layers.aircraft, layers.ships]);
+  }, [
+    layers.aircraft,
+    layers.ships,
+    aircraftPreset,
+    aircraftCallsignPrefix,
+    aircraftMinAltitude,
+    aircraftMaxAltitude,
+    aircraftMinVelocity,
+  ]);
 
   return (
     <div
@@ -379,14 +523,38 @@ const GlobeViewer = forwardRef((_props, ref) => {
 
 async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, timeRange = {}) {
   const guard = () => viewer && !viewer.isDestroyed() && !isCancelled();
-  const params = { limit: 2000 };
+  const mb = timeRange.mapBbox;
+  const bboxStr =
+    Array.isArray(mb) && mb.length === 4 && !mb.some((x) => typeof x !== "number" || Number.isNaN(x))
+      ? mb.join(",")
+      : null;
+  const params = { compact: "1", limit: bboxStr ? 4000 : 450 };
   if (timeRange.timeStart) params.time_start = timeRange.timeStart;
   if (timeRange.timeEnd) params.time_end = timeRange.timeEnd;
+  if (bboxStr) params.bbox = bboxStr;
   const filters = timeRange.eventFilters || {};
   if (filters.dedupe) params.dedupe = "1";
   if (filters.event_type) params.event_type = filters.event_type;
   if (filters.source) params.source = filters.source;
   if (filters.severity_min != null && filters.severity_min !== "") params.severity_min = filters.severity_min;
+
+  const aircraftParams = { live: "false" };
+  if (timeRange.aircraftPreset && timeRange.aircraftPreset !== "all") {
+    aircraftParams.preset = timeRange.aircraftPreset;
+  }
+  if (timeRange.aircraftCallsignPrefix) {
+    aircraftParams.callsign_prefix = timeRange.aircraftCallsignPrefix;
+  }
+  if (timeRange.aircraftMinAltitude !== "" && timeRange.aircraftMinAltitude != null) {
+    aircraftParams.min_altitude = timeRange.aircraftMinAltitude;
+  }
+  if (timeRange.aircraftMaxAltitude !== "" && timeRange.aircraftMaxAltitude != null) {
+    aircraftParams.max_altitude = timeRange.aircraftMaxAltitude;
+  }
+  if (timeRange.aircraftMinVelocity !== "" && timeRange.aircraftMinVelocity != null) {
+    aircraftParams.min_velocity = timeRange.aircraftMinVelocity;
+  }
+  if (bboxStr) aircraftParams.bbox = bboxStr;
 
   if (layers.events) {
     try {
@@ -395,7 +563,7 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
       removeDS(viewer, dsRef, "events");
 
       const ds = new CustomDataSource("events");
-      const features = geojson.features || [];
+      const features = thinFeaturesByTimeField(geojson.features || [], MAX_EVENT_ENTITIES, "occurred_at");
       for (const f of features) {
         const coords = f.geometry?.coordinates;
         if (!coords || coords.length < 2) continue;
@@ -421,7 +589,7 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
         });
       }
       if (!guard()) return;
-      enableClustering(ds);
+      enableClustering(ds, viewer);
       await viewer.dataSources.add(ds);
       dsRef.current.events = ds;
     } catch (e) { console.warn("Events load failed", e); }
@@ -458,7 +626,7 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
         });
       }
       if (!guard()) return;
-      enableClustering(ds);
+      enableClustering(ds, viewer);
       await viewer.dataSources.add(ds);
       dsRef.current.webcams = ds;
     } catch (e) { console.warn("Webcams load failed", e); }
@@ -474,12 +642,14 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
       const envParams = { event_type: envTypes.join(","), limit: 2000 };
       if (params.time_start) envParams.time_start = params.time_start;
       if (params.time_end) envParams.time_end = params.time_end;
+      if (bboxStr) envParams.bbox = bboxStr;
       const geojson = await offlineApi.getEnvironmental(envParams);
       if (!guard()) return;
       removeDS(viewer, dsRef, "environmental");
 
       const ds = new CustomDataSource("environmental");
-      for (const f of geojson.features || []) {
+      const envFeats = thinFeaturesByTimeField(geojson.features || [], MAX_ENV_ENTITIES, "started_at");
+      for (const f of envFeats) {
         const coords = f.geometry?.coordinates;
         if (!coords || coords.length < 2) continue;
         const [lng, lat] = coords;
@@ -503,7 +673,7 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
         });
       }
       if (!guard()) return;
-      enableClustering(ds);
+      enableClustering(ds, viewer);
       await viewer.dataSources.add(ds);
       dsRef.current.environmental = ds;
     } catch (e) { console.warn("Environmental load failed", e); }
@@ -513,16 +683,18 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
 
   if (layers.anomalies) {
     try {
-      const anomParams = { limit: 500 };
+      const anomParams = { limit: 800 };
       if (params.time_start) anomParams.time_start = params.time_start;
       if (params.time_end) anomParams.time_end = params.time_end;
+      if (bboxStr) anomParams.bbox = bboxStr;
       const geojson = await api.getAnomalies(anomParams);
       if (!guard()) return;
       removeDS(viewer, dsRef, "anomalies");
 
       const ds = new CustomDataSource("anomalies");
       const icon = EVENT_ICONS.anomaly;
-      for (const f of geojson.features || []) {
+      const anomFeats = thinFeaturesByTimeField(geojson.features || [], MAX_ANOMALY_ENTITIES, "detected_at");
+      for (const f of anomFeats) {
         const coords = f.geometry?.coordinates;
         if (!coords || coords.length < 2) continue;
         const [lng, lat] = coords;
@@ -544,7 +716,7 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
         });
       }
       if (!guard()) return;
-      enableClustering(ds);
+      enableClustering(ds, viewer);
       await viewer.dataSources.add(ds);
       dsRef.current.anomalies = ds;
     } catch (e) { console.warn("Anomalies load failed", e); }
@@ -557,12 +729,14 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
       const tgParams = { limit: 2000 };
       if (params.time_start) tgParams.time_start = params.time_start;
       if (params.time_end) tgParams.time_end = params.time_end;
+      if (bboxStr) tgParams.bbox = bboxStr;
       const geojson = await offlineApi.getTelegramGeojson(tgParams);
       if (!guard()) return;
       removeDS(viewer, dsRef, "telegram");
 
       const ds = new CustomDataSource("telegram");
-      for (const f of geojson.features || []) {
+      const tgFeats = thinFeaturesByTimeField(geojson.features || [], MAX_TELEGRAM_ENTITIES, "posted_at");
+      for (const f of tgFeats) {
         const coords = f.geometry?.coordinates;
         if (!coords || coords.length < 2) continue;
         const [lng, lat] = coords;
@@ -584,7 +758,7 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
         });
       }
       if (!guard()) return;
-      enableClustering(ds);
+      enableClustering(ds, viewer);
       await viewer.dataSources.add(ds);
       dsRef.current.telegram = ds;
     } catch (e) {
@@ -592,6 +766,56 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
     }
   } else {
     if (guard()) removeDS(viewer, dsRef, "telegram");
+  }
+
+  for (const [layerKey, apiId] of Object.entries(CONTEXT_LAYER_MAP)) {
+    if (layers[layerKey]) {
+      try {
+        const q = bboxStr ? { bbox: bboxStr } : {};
+        const fc = await api.getContextGeojson(apiId, q);
+        if (!guard()) return;
+        removeDS(viewer, dsRef, layerKey);
+        const isPointLayer = apiId === "airports" || apiId === "ports";
+        const ds = await GeoJsonDataSource.load(fc, {
+          stroke: Color.fromCssColorString("#e2e8f0").withAlpha(0.92),
+          fill: Color.fromCssColorString("#3b82f6").withAlpha(isPointLayer ? 0.55 : 0.12),
+          strokeWidth: isPointLayer ? 1 : 2,
+          clampToGround: !isPointLayer,
+        });
+        ds.name = layerKey;
+        if (!guard()) return;
+        await viewer.dataSources.add(ds);
+        dsRef.current[layerKey] = ds;
+      } catch (e) {
+        console.warn(`Context layer ${layerKey} failed`, e);
+      }
+    } else if (guard()) {
+      removeDS(viewer, dsRef, layerKey);
+    }
+  }
+
+  if (layers.territorial) {
+    try {
+      const tq = { at: timeRange.timeEnd || new Date().toISOString() };
+      if (bboxStr) tq.bbox = bboxStr;
+      const fc = await api.getTerritorialActive(tq);
+      if (!guard()) return;
+      removeDS(viewer, dsRef, "territorial");
+      const ds = await GeoJsonDataSource.load(fc, {
+        stroke: Color.fromCssColorString("#f97316").withAlpha(0.95),
+        fill: Color.fromCssColorString("#f97316").withAlpha(0.22),
+        strokeWidth: 3,
+        clampToGround: true,
+      });
+      ds.name = "territorial";
+      if (!guard()) return;
+      await viewer.dataSources.add(ds);
+      dsRef.current.territorial = ds;
+    } catch (e) {
+      console.warn("Territorial layer failed", e);
+    }
+  } else if (guard()) {
+    removeDS(viewer, dsRef, "territorial");
   }
 
   if (layers.ships && !dsRef.current.ships) {
@@ -602,13 +826,23 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
   }
   if (!layers.ships && guard()) removeDS(viewer, dsRef, "ships");
 
-  if (layers.aircraft && !dsRef.current.aircraft) {
+  if (layers.aircraft) {
     try {
-      const geojson = await api.getAircraft({ live: "false" });
-      if (guard() && geojson.features?.length) loadTracking(viewer, dsRef, "aircraft", geojson);
-    } catch (e) { console.warn("Aircraft initial load failed", e); }
+      const geojson = await api.getAircraft(aircraftParams);
+      if (!guard()) return;
+      const filtered = filterAircraftGeojson(geojson, {
+        preset: timeRange.aircraftPreset,
+        callsignPrefix: timeRange.aircraftCallsignPrefix,
+        minAltitude: timeRange.aircraftMinAltitude,
+        maxAltitude: timeRange.aircraftMaxAltitude,
+        minVelocity: timeRange.aircraftMinVelocity,
+      });
+      if (filtered.features?.length) loadTracking(viewer, dsRef, "aircraft", filtered);
+      else if (guard()) removeDS(viewer, dsRef, "aircraft");
+    } catch (e) { console.warn("Aircraft load failed", e); }
+  } else if (guard()) {
+    removeDS(viewer, dsRef, "aircraft");
   }
-  if (!layers.aircraft && guard()) removeDS(viewer, dsRef, "aircraft");
 
   const HEATMAP_CONFIG = {
     heatmap_fires: { apiType: "wildfires", color: [239, 68, 68, 89], radius: 80000 },
@@ -624,7 +858,7 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
         removeDS(viewer, dsRef, key);
 
         const ds = new CustomDataSource(key);
-        const points = (data.points || []).slice(0, 3000);
+        const points = (data.points || []).slice(0, 2000);
         const color = Color.fromBytes(...config.color);
         const labels = { heatmap_fires: "Fire hotspot", heatmap_quakes: "Seismic event", heatmap_shipping: "Ship position", heatmap_air: "Aircraft position" };
         for (const p of points) {
@@ -671,7 +905,12 @@ function loadTracking(viewer, dsRef, type, geojson) {
   const icon = isAircraft ? PLANE_SVG : SHIP_SVG;
   const iconSize = isAircraft ? 24 : 18;
 
-  for (const f of geojson.features) {
+  let feats = geojson.features;
+  if (feats.length > MAX_TRACKING_ENTITIES) {
+    feats = thinFeaturesByTimeField(feats, MAX_TRACKING_ENTITIES, "recorded_at");
+  }
+
+  for (const f of feats) {
     const coords = f.geometry?.coordinates;
     if (!coords || coords.length < 2) continue;
     const [lng, lat] = coords;

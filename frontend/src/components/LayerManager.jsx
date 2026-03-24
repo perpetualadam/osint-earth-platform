@@ -12,6 +12,33 @@ const LAYER_GROUPS = [
     ],
   },
   {
+    label: "Context",
+    layers: [
+      {
+        key: "ctx_admin0",
+        label: "Country borders",
+        cacheField: null,
+        tooltip: "Admin-0 polygons (Natural Earth 110m from API or backend/data/context/admin0_countries.geojson)",
+      },
+      { key: "ctx_airports", label: "Airports", cacheField: null, tooltip: "Sample points; replace with your dataset" },
+      { key: "ctx_ports", label: "Ports", cacheField: null, tooltip: "Sample points" },
+      {
+        key: "ctx_military",
+        label: "Military installations",
+        cacheField: null,
+        tooltip: "Placeholder GeoJSON — verify license before production use",
+      },
+      { key: "ctx_crossings", label: "Border crossings", cacheField: null },
+      { key: "ctx_energy", label: "Dams / energy / industrial", cacheField: null },
+      {
+        key: "territorial",
+        label: "Territorial / LoC",
+        cacheField: null,
+        tooltip: "Time-sliced polygons from backend/data/territorial; uses timeline end as “as of” time",
+      },
+    ],
+  },
+  {
     label: "Tracking",
     layers: [
       { key: "aircraft", label: "Aircraft", cacheField: "tracks" },
@@ -55,6 +82,16 @@ const hasIonToken = !!import.meta.env.VITE_CESIUM_ION_TOKEN;
 export default function LayerManager() {
   const layers = useStore((s) => s.layers);
   const toggle = useStore((s) => s.toggleLayer);
+  const aircraftPreset = useStore((s) => s.aircraftPreset);
+  const setAircraftPreset = useStore((s) => s.setAircraftPreset);
+  const aircraftCallsignPrefix = useStore((s) => s.aircraftCallsignPrefix);
+  const setAircraftCallsignPrefix = useStore((s) => s.setAircraftCallsignPrefix);
+  const aircraftMinAltitude = useStore((s) => s.aircraftMinAltitude);
+  const setAircraftMinAltitude = useStore((s) => s.setAircraftMinAltitude);
+  const aircraftMaxAltitude = useStore((s) => s.aircraftMaxAltitude);
+  const setAircraftMaxAltitude = useStore((s) => s.setAircraftMaxAltitude);
+  const aircraftMinVelocity = useStore((s) => s.aircraftMinVelocity);
+  const setAircraftMinVelocity = useStore((s) => s.setAircraftMinVelocity);
   const eventFilters = useStore((s) => s.eventFilters);
   const setEventFilters = useStore((s) => s.setEventFilters);
   const triggerAnomaliesRefresh = useStore((s) => s.triggerAnomaliesRefresh);
@@ -164,6 +201,69 @@ export default function LayerManager() {
                 )}
               </div>
             ))}
+          {group.label === "Tracking" && layers.aircraft && (
+            <div className="lm-aircraft-filters">
+              <h4 className="lm-filters-label">Aircraft filters</h4>
+              <div className="lm-filter-row">
+                <label htmlFor="lm-ac-preset">Preset</label>
+                <select
+                  id="lm-ac-preset"
+                  value={aircraftPreset}
+                  onChange={(e) => setAircraftPreset(e.target.value)}
+                  aria-label="Aircraft preset"
+                >
+                  <option value="all">All traffic</option>
+                  <option value="military">Military / gov heuristics</option>
+                  <option value="interesting">Military + unusual</option>
+                </select>
+              </div>
+              <div className="lm-filter-row">
+                <label htmlFor="lm-ac-cs">Callsign prefix</label>
+                <input
+                  id="lm-ac-cs"
+                  type="text"
+                  placeholder="e.g. RCH"
+                  value={aircraftCallsignPrefix}
+                  onChange={(e) => setAircraftCallsignPrefix(e.target.value)}
+                  aria-label="Filter callsign prefix"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="lm-filter-row">
+                <label htmlFor="lm-ac-alt-min">Min alt (ft)</label>
+                <input
+                  id="lm-ac-alt-min"
+                  type="number"
+                  placeholder="—"
+                  value={aircraftMinAltitude ?? ""}
+                  onChange={(e) => setAircraftMinAltitude(e.target.value)}
+                  aria-label="Minimum altitude feet"
+                />
+              </div>
+              <div className="lm-filter-row">
+                <label htmlFor="lm-ac-alt-max">Max alt (ft)</label>
+                <input
+                  id="lm-ac-alt-max"
+                  type="number"
+                  placeholder="—"
+                  value={aircraftMaxAltitude ?? ""}
+                  onChange={(e) => setAircraftMaxAltitude(e.target.value)}
+                  aria-label="Maximum altitude feet"
+                />
+              </div>
+              <div className="lm-filter-row">
+                <label htmlFor="lm-ac-vel">Min speed</label>
+                <input
+                  id="lm-ac-vel"
+                  type="number"
+                  placeholder="—"
+                  value={aircraftMinVelocity ?? ""}
+                  onChange={(e) => setAircraftMinVelocity(e.target.value)}
+                  aria-label="Minimum ground speed"
+                />
+              </div>
+            </div>
+          )}
           {group.label === "Intelligence" && layers.events && (
             <div className="lm-event-filters">
               <h4 className="lm-filters-label">Event filters</h4>
@@ -226,7 +326,7 @@ export default function LayerManager() {
 
       <style>{`
         .layer-manager {
-          width: 230px;
+          width: 260px;
           overflow-y: auto;
           flex-shrink: 0;
           border-right: 1px solid var(--border);
@@ -343,7 +443,7 @@ export default function LayerManager() {
         }
         .lm-filter-row:last-child { margin-bottom: 0; }
         .lm-filter-row label { min-width: 70px; font-size: 11px; color: var(--text-secondary); }
-        .lm-filter-row select, .lm-filter-row input[type="number"] {
+        .lm-filter-row select, .lm-filter-row input[type="number"], .lm-filter-row input[type="text"] {
           flex: 1;
           padding: 4px 8px;
           font-size: 11px;
@@ -351,6 +451,13 @@ export default function LayerManager() {
           color: var(--text);
           border: 1px solid var(--border);
           border-radius: 4px;
+        }
+        .lm-aircraft-filters {
+          margin-top: 8px;
+          padding: 10px;
+          background: var(--bg-hover);
+          border-radius: 6px;
+          font-size: 12px;
         }
       `}</style>
     </aside>

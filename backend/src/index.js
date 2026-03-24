@@ -21,6 +21,8 @@ import replayRouter from "./routes/replay.js";
 import offlineRouter from "./routes/offline.js";
 import aiProxyRouter from "./routes/aiProxy.js";
 import telegramRouter from "./routes/telegram.js";
+import contextRouter from "./routes/context.js";
+import territorialRouter from "./routes/territorial.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { rateLimit } from "./middleware/rateLimit.js";
 import { setupWebSocket } from "./websocket/live.js";
@@ -83,6 +85,8 @@ app.use("/api/replay", replayRouter);
 app.use("/api/offline", offlineRouter);
 app.use("/api/ai", aiProxyRouter);
 app.use("/api/telegram", telegramRouter);
+app.use("/api/context", contextRouter);
+app.use("/api/territorial", territorialRouter);
 
 app.use(errorHandler);
 

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { buildSpatialFilter } from "../services/db.js";
+import { maxEventRowsForBbox } from "../lib/bboxQueryCaps.js";
 
 const router = Router();
 
@@ -13,13 +14,52 @@ router.get("/", async (req, res, next) => {
     const { pool } = req.app.locals;
     const { where, params, nextParam } = buildSpatialFilter(req.query);
     const whereSql = where ? `${where} AND location IS NOT NULL` : "WHERE location IS NOT NULL";
-    const limit = Math.min(parseInt(req.query.limit || "500", 10), 5000);
+    const hasBbox = Boolean(req.query.bbox && req.query.bbox.split(",").length === 4);
+    const areaHardCap = hasBbox ? maxEventRowsForBbox(req.query.bbox) : 1_500;
+    const defaultCap = hasBbox ? Math.min(2_000, areaHardCap) : 450;
+    const hardCap = areaHardCap;
+    const limit = Math.min(
+      Math.max(1, parseInt(req.query.limit || String(defaultCap), 10)),
+      hardCap
+    );
     const offset = parseInt(req.query.offset || "0", 10);
     const dedupe = req.query.dedupe === "1" || req.query.dedupe === "true";
+    const compact =
+      req.query.compact === "1" ||
+      req.query.compact === "true" ||
+      req.query.fields === "map";
 
     let sql;
     if (dedupe) {
-      sql = `
+      sql = compact
+        ? `
+        WITH ranked AS (
+          SELECT id, event_type, title, severity, source, source_id,
+                 occurred_at, created_at, metadata, location, bbox,
+                 COUNT(*) OVER (
+                   PARTITION BY source, source_id,
+                     ROUND(ST_X(location)::numeric, 2),
+                     ROUND(ST_Y(location)::numeric, 2)
+                 ) AS merged_count,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY source, source_id,
+                     ROUND(ST_X(location)::numeric, 2),
+                     ROUND(ST_Y(location)::numeric, 2)
+                   ORDER BY id
+                 ) AS rn
+          FROM events
+          ${whereSql}
+        )
+        SELECT id, event_type, title, severity, source, source_id,
+               occurred_at, metadata,
+               ST_AsGeoJSON(location)::json AS geometry,
+               merged_count
+        FROM ranked
+        WHERE rn = 1
+        ORDER BY GREATEST(occurred_at, created_at) DESC NULLS LAST
+        LIMIT $${nextParam} OFFSET $${nextParam + 1}
+      `
+        : `
         WITH ranked AS (
           SELECT id, event_type, title, description, severity, source, source_id,
                  occurred_at, created_at, metadata, location, bbox,
@@ -48,7 +88,17 @@ router.get("/", async (req, res, next) => {
         LIMIT $${nextParam} OFFSET $${nextParam + 1}
       `;
     } else {
-      sql = `
+      sql = compact
+        ? `
+        SELECT id, event_type, title, severity, source, source_id,
+               occurred_at, metadata,
+               ST_AsGeoJSON(location)::json AS geometry
+        FROM events
+        ${whereSql}
+        ORDER BY GREATEST(occurred_at, created_at) DESC NULLS LAST
+        LIMIT $${nextParam} OFFSET $${nextParam + 1}
+      `
+        : `
         SELECT id, event_type, title, description, severity, source, source_id,
                occurred_at, metadata,
                ST_AsGeoJSON(location)::json AS geometry,
@@ -71,7 +121,7 @@ router.get("/", async (req, res, next) => {
           id: r.id,
           event_type: r.event_type,
           title: r.title,
-          description: r.description,
+          ...(!compact && r.description != null && { description: r.description }),
           severity: r.severity,
           source: r.source,
           source_id: r.source_id,

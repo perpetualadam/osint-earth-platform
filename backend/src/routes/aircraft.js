@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { filterAircraftFeatures } from "../lib/aircraftInterest.js";
 
 const router = Router();
 
@@ -79,28 +80,38 @@ router.get("/", async (req, res, next) => {
     `;
     const { rows } = await pool.query(sql, params);
 
-    res.json({
-      type: "FeatureCollection",
-      features: rows.map((r) => ({
-        type: "Feature",
-        geometry: r.geometry,
-        properties: {
-          icao24: r.icao24,
-          callsign: r.callsign,
-          origin: r.origin,
-          destination: r.destination,
-          altitude: r.altitude,
-          velocity: r.velocity,
-          heading: r.heading,
-          on_ground: r.on_ground,
-          recorded_at: r.recorded_at,
-          origin_country: r.origin_country || "",
-          category: r.category || "",
-          vertical_rate: r.vertical_rate,
-          squawk: r.squawk || "",
-        },
-      })),
-    });
+    let features = rows.map((r) => ({
+      type: "Feature",
+      geometry: r.geometry,
+      properties: {
+        icao24: r.icao24,
+        callsign: r.callsign,
+        origin: r.origin,
+        destination: r.destination,
+        altitude: r.altitude,
+        velocity: r.velocity,
+        heading: r.heading,
+        on_ground: r.on_ground,
+        recorded_at: r.recorded_at,
+        origin_country: r.origin_country || "",
+        category: r.category || "",
+        vertical_rate: r.vertical_rate,
+        squawk: r.squawk || "",
+      },
+    }));
+
+    const q = req.query;
+    if (
+      q.preset ||
+      q.callsign_prefix ||
+      q.min_altitude != null ||
+      q.max_altitude != null ||
+      q.min_velocity != null
+    ) {
+      features = filterAircraftFeatures(features, q);
+    }
+
+    res.json({ type: "FeatureCollection", features });
   } catch (err) {
     next(err);
   }

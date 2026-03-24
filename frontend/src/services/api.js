@@ -84,4 +84,16 @@ export const api = {
 
   getTelegramPosts: (params) =>
     fetchJSON(`${BASE}/api/telegram/posts?${new URLSearchParams(params)}`),
+
+  getTelegramPost: (id) => fetchJSON(`${BASE}/api/telegram/posts/${encodeURIComponent(id)}`),
+
+  getContextManifest: () => fetchJSON(`${BASE}/api/context/manifest`),
+
+  getContextGeojson: (layerId, params) =>
+    fetchJSON(`${BASE}/api/context/layers/${encodeURIComponent(layerId)}/geojson?${new URLSearchParams(params || {})}`),
+
+  getTerritorialManifest: () => fetchJSON(`${BASE}/api/territorial/manifest`),
+
+  getTerritorialActive: (params) =>
+    fetchJSON(`${BASE}/api/territorial/active?${new URLSearchParams(params || {})}`),
 };

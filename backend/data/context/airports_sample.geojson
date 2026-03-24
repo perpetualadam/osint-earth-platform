@@ -1,0 +1,14 @@
+{
+  "type": "FeatureCollection",
+  "name": "airports_sample",
+  "features": [
+    {"type": "Feature", "properties": {"name": "LAX"}, "geometry": {"type": "Point", "coordinates": [-118.408, 33.942]}},
+    {"type": "Feature", "properties": {"name": "JFK"}, "geometry": {"type": "Point", "coordinates": [-73.779, 40.640]}},
+    {"type": "Feature", "properties": {"name": "LHR"}, "geometry": {"type": "Point", "coordinates": [-0.454, 51.470]}},
+    {"type": "Feature", "properties": {"name": "CDG"}, "geometry": {"type": "Point", "coordinates": [2.550, 49.010]}},
+    {"type": "Feature", "properties": {"name": "DXB"}, "geometry": {"type": "Point", "coordinates": [55.365, 25.253]}},
+    {"type": "Feature", "properties": {"name": "HND"}, "geometry": {"type": "Point", "coordinates": [139.785, 35.549]}},
+    {"type": "Feature", "properties": {"name": "SIN"}, "geometry": {"type": "Point", "coordinates": [103.989, 1.364]}},
+    {"type": "Feature", "properties": {"name": "SYD"}, "geometry": {"type": "Point", "coordinates": [151.177, -33.950]}}
+  ]
+}

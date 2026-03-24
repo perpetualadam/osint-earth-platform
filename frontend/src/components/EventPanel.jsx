@@ -9,6 +9,13 @@ function TelegramPostDetail({ data, onClose }) {
   const posted = data.posted_at
     ? new Date(data.posted_at).toLocaleString()
     : "—";
+  const meta = data.metadata && typeof data.metadata === "object" ? data.metadata : {};
+  const tgUrl = meta.telegram_url;
+  const media = meta.media;
+  const mapShare =
+    data.id != null && typeof window !== "undefined"
+      ? `${window.location.origin}${window.location.pathname}?telegram=${encodeURIComponent(String(data.id))}`
+      : null;
   return (
     <aside className="event-panel panel ep-telegram-detail">
       <div className="ep-header">
@@ -18,8 +25,29 @@ function TelegramPostDetail({ data, onClose }) {
       <div className="ep-type-badge ep-badge-telegram">Telegram</div>
       <div className="ep-meta">
         <div className="ep-row"><span>Posted</span><span>{posted}</span></div>
+        {data.id != null && (
+          <div className="ep-row"><span>Post id</span><span>{data.id}</span></div>
+        )}
         {data.geo_confidence != null && (
           <div className="ep-row"><span>Geo confidence</span><span>{Number(data.geo_confidence).toFixed(2)}</span></div>
+        )}
+        {media?.type && (
+          <div className="ep-row"><span>Attachment</span><span>{media.type}</span></div>
+        )}
+        {media?.type === "video" && (
+          <p className="ep-desc" style={{ marginTop: 6 }}>
+            Video is not streamed inside this app. Open the original message in Telegram to play it, or add a bot + getFile flow to expose HTTPS URLs.
+          </p>
+        )}
+        {tgUrl && (
+          <a href={tgUrl} target="_blank" rel="noopener noreferrer" className="ep-link" style={{ marginTop: 6, display: "inline-block" }}>
+            Open in Telegram
+          </a>
+        )}
+        {mapShare && (
+          <a href={mapShare} className="ep-link" style={{ marginTop: 6, marginLeft: tgUrl ? 12 : 0, display: "inline-block" }}>
+            Copyable map link
+          </a>
         )}
         <div className="ep-desc" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{body}</div>
         {data.text_en && data.text && data.text !== data.text_en && (
@@ -144,9 +172,7 @@ function AircraftDetail({ data, onClose }) {
 }
 
 function EventDetail({ data, onClose, snapshots, openGallery, selectEvent }) {
-  const meta = data.metadata || {};
-  const badgeClass = `ep-badge-${data.event_type || "news"}`;
-  const label = (data.event_type || "event").replace(/^\w/, (c) => c.toUpperCase());
+  const [hydrated, setHydrated] = useState(null);
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsLangs, setNewsLangs] = useState("english");
@@ -154,54 +180,70 @@ function EventDetail({ data, onClose, snapshots, openGallery, selectEvent }) {
   const [relatedEvents, setRelatedEvents] = useState([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
 
+  const dataView = hydrated ? { ...data, ...hydrated } : data;
+  const meta = dataView.metadata || {};
+  const badgeClass = `ep-badge-${dataView.event_type || "news"}`;
+  const label = (dataView.event_type || "event").replace(/^\w/, (c) => c.toUpperCase());
+
   useEffect(() => {
-    if (!data.id) return;
+    setHydrated(null);
+    if (!data?.id || data.description) return;
+    let cancelled = false;
+    offlineApi.getEvent(data.id).then((row) => {
+      if (cancelled || !row) return;
+      setHydrated(row);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [data?.id, data?.description]);
+
+  useEffect(() => {
+    if (!dataView.id) return;
     setNewsLoading(true);
     const params = { langs: newsLangs };
     if (newsTranslate) params.translate = "true";
-    api.getEventNews(data.id, params)
+    api.getEventNews(dataView.id, params)
       .then((d) => setNews(d.articles || []))
       .catch(() => setNews([]))
       .finally(() => setNewsLoading(false));
-  }, [data.id, newsLangs, newsTranslate]);
+  }, [dataView.id, newsLangs, newsTranslate]);
 
   useEffect(() => {
-    if (data.lat == null || data.lon == null) return;
-    const { lat, lon } = data;
+    if (dataView.lat == null || dataView.lon == null) return;
+    const { lat, lon } = dataView;
     setRelatedLoading(true);
     const pad = 0.5;
     const bbox = [lon - pad, lat - pad, lon + pad, lat + pad].join(",");
-    const timeStart = data.occurred_at ? new Date(new Date(data.occurred_at).getTime() - 86400000 * 2).toISOString() : "";
-    const timeEnd = data.occurred_at ? new Date(new Date(data.occurred_at).getTime() + 86400000 * 2).toISOString() : "";
+    const timeStart = dataView.occurred_at ? new Date(new Date(dataView.occurred_at).getTime() - 86400000 * 2).toISOString() : "";
+    const timeEnd = dataView.occurred_at ? new Date(new Date(dataView.occurred_at).getTime() + 86400000 * 2).toISOString() : "";
     api.getEvents({ bbox, time_start: timeStart, time_end: timeEnd, limit: 10, dedupe: "1" })
-      .then((g) => setRelatedEvents((g.features || []).filter((f) => f.properties?.id !== data.id)))
+      .then((g) => setRelatedEvents((g.features || []).filter((f) => f.properties?.id !== dataView.id)))
       .catch(() => setRelatedEvents([]))
       .finally(() => setRelatedLoading(false));
-  }, [data.id, data.lat, data.lon, data.occurred_at]);
+  }, [dataView.id, dataView.lat, dataView.lon, dataView.occurred_at]);
 
   return (
     <aside className="event-panel panel">
       <div className="ep-header">
-        <h2 className="ep-title">{data.title || label}</h2>
+        <h2 className="ep-title">{dataView.title || label}</h2>
         <button className="ep-close" onClick={onClose}>&times;</button>
       </div>
       <div className={`ep-type-badge ${badgeClass}`}>{label}</div>
       <div className="ep-meta">
-        {data.merged_count > 1 && (
-          <div className="ep-row ep-row-highlight"><span>Merged</span><span>{data.merged_count} events from same article/location</span></div>
+        {dataView.merged_count > 1 && (
+          <div className="ep-row ep-row-highlight"><span>Merged</span><span>{dataView.merged_count} events from same article/location</span></div>
         )}
         {meta.location_name && <div className="ep-row"><span>Location</span><span>{meta.location_name}</span></div>}
-        {data.source && <div className="ep-row"><span>Source</span><span>{data.source.toUpperCase()}</span></div>}
-        {data.occurred_at && <div className="ep-row"><span>Time</span><span>{new Date(data.occurred_at).toLocaleString()}</span></div>}
+        {dataView.source && <div className="ep-row"><span>Source</span><span>{dataView.source.toUpperCase()}</span></div>}
+        {dataView.occurred_at && <div className="ep-row"><span>Time</span><span>{new Date(dataView.occurred_at).toLocaleString()}</span></div>}
         {meta.actor1 && <div className="ep-row"><span>Actor 1</span><span>{meta.actor1}</span></div>}
         {meta.actor2 && <div className="ep-row"><span>Actor 2</span><span>{meta.actor2}</span></div>}
         {meta.goldstein != null && <div className="ep-row"><span>Goldstein</span><span>{meta.goldstein}</span></div>}
         {meta.mentions != null && <div className="ep-row"><span>Mentions</span><span>{meta.mentions}</span></div>}
         {meta.country && <div className="ep-row"><span>Country</span><span>{meta.country}</span></div>}
         {meta.country_code && !meta.country && <div className="ep-row"><span>Country</span><span>{meta.country_code}</span></div>}
-        {data.severity != null && <div className="ep-row"><span>Fatalities</span><span>{data.severity}</span></div>}
+        {dataView.severity != null && <div className="ep-row"><span>Fatalities</span><span>{dataView.severity}</span></div>}
       </div>
-      {data.description && <p className="ep-desc">{data.description}</p>}
+      {dataView.description && <p className="ep-desc">{dataView.description}</p>}
       {meta.url && (
         <a href={meta.url} target="_blank" rel="noopener noreferrer" className="ep-link">
           Open source article
@@ -225,7 +267,7 @@ function EventDetail({ data, onClose, snapshots, openGallery, selectEvent }) {
         </label>
       </div>
       {newsLoading && <p className="ep-news-loading">Loading related news...</p>}
-      {data.lat != null && data.lon != null && (
+      {dataView.lat != null && dataView.lon != null && (
         <div className="ep-related-section">
           <h3 className="ep-snap-title">Related events nearby</h3>
           {relatedLoading && <p className="ep-news-loading">Loading…</p>}

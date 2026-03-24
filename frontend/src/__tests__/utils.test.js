@@ -4,6 +4,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { lng2tile, lat2tile, tileBBox, countTiles } from "../utils/tilemath";
+import { thinFeaturesByTimeField } from "../utils/mapThinning";
 
 describe("tilemath", () => {
   describe("lng2tile", () => {
@@ -78,5 +79,24 @@ describe("tilemath", () => {
       const high = countTiles([-10, 35, 30, 60], 0, 8);
       expect(high).toBeGreaterThan(low);
     });
+  });
+});
+
+describe("mapThinning", () => {
+  it("returns unchanged when under max", () => {
+    const f = [{ properties: { t: "2024-01-01T00:00:00Z" } }];
+    expect(thinFeaturesByTimeField(f, 5, "t")).toEqual(f);
+  });
+
+  it("keeps most recent N by time field", () => {
+    const features = [
+      { properties: { occurred_at: "2020-01-01T00:00:00Z" } },
+      { properties: { occurred_at: "2024-06-01T00:00:00Z" } },
+      { properties: { occurred_at: "2023-01-01T00:00:00Z" } },
+    ];
+    const out = thinFeaturesByTimeField(features, 2, "occurred_at");
+    expect(out).toHaveLength(2);
+    expect(out[0].properties.occurred_at).toBe("2024-06-01T00:00:00Z");
+    expect(out[1].properties.occurred_at).toBe("2023-01-01T00:00:00Z");
   });
 });
