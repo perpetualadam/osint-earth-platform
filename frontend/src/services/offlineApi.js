@@ -111,7 +111,15 @@ export const offlineApi = {
     try {
       return await api.getTelegramUnmappedPosts(params);
     } catch {
-      return { posts: [], total: 0, limit: 0, offset: 0 };
+      return { posts: [], total: 0, limit: 0, offset: 0, channel_username: null };
+    }
+  },
+
+  async getTelegramUnmappedChannels() {
+    try {
+      return await api.getTelegramUnmappedChannels();
+    } catch {
+      return { channels: [] };
     }
   },
 };

@@ -79,31 +79,60 @@ router.get("/geojson", async (req, res, next) => {
   }
 });
 
+/** Distinct channel usernames for unmapped posts (alphabetical). Register before /posts/unmapped. */
+router.get("/posts/unmapped/channels", async (req, res, next) => {
+  try {
+    const { pool } = req.app.locals;
+    const { rows } = await pool.query(
+      `SELECT DISTINCT channel_username
+       FROM telegram_posts
+       WHERE location IS NULL
+         AND channel_username IS NOT NULL
+         AND TRIM(channel_username) <> ''
+       ORDER BY LOWER(channel_username), channel_username`
+    );
+    const channels = rows.map((r) => r.channel_username).filter(Boolean);
+    res.json({ channels });
+  } catch (err) {
+    if (err.code === "42P01") {
+      return res.json({ channels: [] });
+    }
+    next(err);
+  }
+});
+
 /** Posts with no geocoded point (not shown on the globe layer). Must be registered before /posts/:id. */
 router.get("/posts/unmapped", async (req, res, next) => {
   try {
     const { pool } = req.app.locals;
     const limit = Math.min(parseInt(req.query.limit || "80", 10), 200);
     const offset = Math.max(0, parseInt(req.query.offset || "0", 10));
-    const [{ rows: countRows }, { rows }] = await Promise.all([
-      pool.query(
-        `SELECT COUNT(*)::int AS n FROM telegram_posts WHERE location IS NULL`
-      ),
-      pool.query(
-        `SELECT id, telegram_message_id, channel_id, channel_username, text, text_en,
+    const rawCh = (req.query.channel_username || req.query.channel || "").trim().replace(/^@/, "");
+    const channelClause = rawCh
+      ? " AND LOWER(REPLACE(TRIM(channel_username), '@', '')) = LOWER($1)"
+      : "";
+    const channelParam = rawCh ? [rawCh.replace(/^@/, "")] : [];
+    const orderBy = rawCh
+      ? "posted_at DESC"
+      : "LOWER(COALESCE(channel_username, '')), posted_at DESC";
+
+    const countSql = `SELECT COUNT(*)::int AS n FROM telegram_posts WHERE location IS NULL${channelClause}`;
+    const listSql = `SELECT id, telegram_message_id, channel_id, channel_username, text, text_en,
                 posted_at, metadata
          FROM telegram_posts
-         WHERE location IS NULL
-         ORDER BY posted_at DESC
-         LIMIT $1 OFFSET $2`,
-        [limit, offset]
-      ),
+         WHERE location IS NULL${channelClause}
+         ORDER BY ${orderBy}
+         LIMIT $${channelParam.length + 1} OFFSET $${channelParam.length + 2}`;
+
+    const [{ rows: countRows }, { rows }] = await Promise.all([
+      pool.query(countSql, channelParam),
+      pool.query(listSql, [...channelParam, limit, offset]),
     ]);
     const total = countRows[0]?.n ?? 0;
-    res.json({ posts: rows, total, limit, offset });
+    res.json({ posts: rows, total, limit, offset, channel_username: rawCh || null });
   } catch (err) {
     if (err.code === "42P01") {
-      return res.json({ posts: [], total: 0, limit: 0, offset: 0 });
+      return res.json({ posts: [], total: 0, limit: 0, offset: 0, channel_username: null });
     }
     next(err);
   }

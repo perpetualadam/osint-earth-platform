@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "../hooks/useStore";
 import { offlineApi } from "../services/offlineApi";
 
@@ -23,31 +23,58 @@ export default function TelegramUnmappedFeed() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
+  const [channels, setChannels] = useState([]);
+  const [channelFilter, setChannelFilter] = useState("");
   const postsLenRef = useRef(0);
   postsLenRef.current = posts.length;
 
-  const fetchPage = useCallback(async (append) => {
-    setLoading(true);
-    setErr(null);
-    const limit = 60;
-    const offset = append ? postsLenRef.current : 0;
-    try {
-      const data = await offlineApi.getTelegramUnmappedPosts({ limit, offset });
-      const next = data.posts || [];
-      setTotal(typeof data.total === "number" ? data.total : next.length);
-      setPosts((prev) => (append ? [...prev, ...next] : next));
-    } catch (e) {
-      setErr(e?.message || "Failed to load");
-      if (!append) setPosts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  useEffect(() => {
+    if (!open || !telegramOn) return;
+    let cancelled = false;
+    offlineApi.getTelegramUnmappedChannels().then((d) => {
+      if (!cancelled) setChannels(Array.isArray(d.channels) ? d.channels : []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, telegramOn]);
+
+  const fetchPage = useCallback(
+    async (append, channelOverride) => {
+      setLoading(true);
+      setErr(null);
+      const limit = 60;
+      const offset = append ? postsLenRef.current : 0;
+      const ch = (channelOverride !== undefined ? channelOverride : channelFilter).trim();
+      const params = { limit, offset };
+      if (ch) params.channel_username = ch;
+      try {
+        const data = await offlineApi.getTelegramUnmappedPosts(params);
+        const next = data.posts || [];
+        setTotal(typeof data.total === "number" ? data.total : next.length);
+        setPosts((prev) => (append ? [...prev, ...next] : next));
+      } catch (e) {
+        setErr(e?.message || "Failed to load");
+        if (!append) setPosts([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [channelFilter]
+  );
 
   const onToggle = (e) => {
     const nextOpen = e.target.open;
     setOpen(nextOpen);
     if (nextOpen && posts.length === 0 && !loading) fetchPage(false);
+  };
+
+  const onChannelChange = (e) => {
+    const v = e.target.value;
+    setChannelFilter(v);
+    setPosts([]);
+    setTotal(0);
+    fetchPage(false, v);
   };
 
   const hasMore = posts.length < total;
@@ -80,7 +107,7 @@ export default function TelegramUnmappedFeed() {
         <div className="tg-unmapped-body">
           <div className="tg-unmapped-toolbar">
             <p className="tg-unmapped-hint">
-              Ingested posts that could not be geocoded (not on the globe). Open a row for full text.
+              Posts with no map point. All channels: sorted A→Z by username, then newest first. Use the menu to show one channel.
             </p>
             <button
               type="button"
@@ -91,6 +118,22 @@ export default function TelegramUnmappedFeed() {
               Refresh
             </button>
           </div>
+          <label className="tg-unmapped-channel-label">
+            <span className="tg-unmapped-channel-title">Channel</span>
+            <select
+              className="tg-unmapped-channel-select"
+              value={channelFilter}
+              onChange={onChannelChange}
+              aria-label="Filter by Telegram channel"
+            >
+              <option value="">All channels (A–Z)</option>
+              {channels.map((c) => (
+                <option key={c} value={c}>
+                  {channelLabel(c)}
+                </option>
+              ))}
+            </select>
+          </label>
           {err && <p className="tg-unmapped-err">{err}</p>}
           {loading && posts.length === 0 && <p className="tg-unmapped-muted">Loading…</p>}
           <ul className="tg-unmapped-list">
@@ -176,6 +219,33 @@ export default function TelegramUnmappedFeed() {
           justify-content: space-between;
           gap: 8px;
           margin-bottom: 8px;
+        }
+        .tg-unmapped-channel-label {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin-bottom: 10px;
+        }
+        .tg-unmapped-channel-title {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          color: #94a3b8;
+        }
+        .tg-unmapped-channel-select {
+          width: 100%;
+          padding: 6px 8px;
+          font-size: 12px;
+          border-radius: 6px;
+          border: 1px solid rgba(56,189,248,0.4);
+          background: rgba(15,23,42,0.95);
+          color: #e2e8f0;
+          cursor: pointer;
+        }
+        .tg-unmapped-channel-select:focus {
+          outline: 2px solid rgba(56,189,248,0.5);
+          outline-offset: 1px;
         }
         .tg-unmapped-hint {
           margin: 0;
@@ -282,6 +352,12 @@ export default function TelegramUnmappedFeed() {
           border-color: rgba(0,0,0,0.1);
         }
         .light-theme .tg-unmapped-hint { color: #64748b; }
+        .light-theme .tg-unmapped-channel-select {
+          background: #fff;
+          color: #0f172a;
+          border-color: rgba(14,165,233,0.45);
+        }
+        .light-theme .tg-unmapped-channel-title { color: #64748b; }
         .light-theme .tg-unmapped-snippet { color: #334155; }
         .light-theme .tg-unmapped-time { color: #64748b; }
       `}</style>

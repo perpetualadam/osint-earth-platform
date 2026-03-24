@@ -705,6 +705,97 @@ function AnomalyDetail({ data, onClose, selectEvent }) {
   );
 }
 
+const CONTEXT_LAYER_TITLES = {
+  ctx_admin0: "Country border",
+  ctx_airports: "Airport",
+  ctx_ports: "Port",
+  ctx_military: "Military installation",
+  ctx_crossings: "Border crossing",
+  ctx_energy: "Dams / energy / industrial",
+  territorial: "Territorial / LoC",
+};
+
+function formatContextPropKey(k) {
+  return k.replace(/_/g, " ");
+}
+
+/** Static map layers (GeoJSON context + territorial) — picked features often only have `name` + coords. */
+function ContextLayerDetail({ data, onClose }) {
+  const layer = data._layerType || "";
+  const kind =
+    CONTEXT_LAYER_TITLES[layer] ||
+    layer.replace(/^ctx_/, "").replace(/_/g, " ") ||
+    "Map feature";
+  const primary =
+    data.name ||
+    data.Name ||
+    data.title ||
+    data.ADMIN ||
+    data.name_en ||
+    data.icao ||
+    data.iata ||
+    data.unlocode ||
+    (data.lat != null && data.lon != null
+      ? `${Number(data.lat).toFixed(4)}°, ${Number(data.lon).toFixed(4)}°`
+      : "Feature");
+
+  const skip = new Set(["_layerType", "_cluster", "entities"]);
+  const rows = Object.entries(data)
+    .filter(([k]) => !skip.has(k) && !k.startsWith("_"))
+    .filter(([, v]) => v != null && v !== "")
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  return (
+    <aside className="event-panel panel ep-context-detail">
+      <div className="ep-header">
+        <h2 className="ep-title">{primary}</h2>
+        <button type="button" className="ep-close" onClick={onClose}>&times;</button>
+      </div>
+      <div className="ep-type-badge ep-badge-context">{kind}</div>
+      <div className="ep-meta">
+        {data.lat != null && data.lon != null && (
+          <>
+            <div className="ep-row">
+              <span>Latitude</span>
+              <span>{Number(data.lat).toFixed(5)}</span>
+            </div>
+            <div className="ep-row">
+              <span>Longitude</span>
+              <span>{Number(data.lon).toFixed(5)}</span>
+            </div>
+          </>
+        )}
+        {rows.map(([k, v]) => {
+          if (k === "lat" || k === "lon") return null;
+          const val = typeof v === "object" ? JSON.stringify(v) : String(v);
+          const shown = val.length > 240 ? `${val.slice(0, 237)}…` : val;
+          return (
+            <div key={k} className="ep-row">
+              <span>{formatContextPropKey(k)}</span>
+              <span>{shown}</span>
+            </div>
+          );
+        })}
+      </div>
+      <style>{`
+        .ep-context-detail .ep-badge-context {
+          display: inline-block;
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          padding: 3px 8px;
+          border-radius: 4px;
+          margin-bottom: 12px;
+          background: rgba(59, 130, 246, 0.15);
+          color: #3b82f6;
+          border: 1px solid rgba(59, 130, 246, 0.35);
+        }
+      `}</style>
+    </aside>
+  );
+}
+
 function ShipDetail({ data, onClose }) {
   const name = data.vessel_name || data.name || "";
   const type = data.vessel_type || data.ship_type || "";
@@ -737,8 +828,11 @@ export default function EventPanel() {
   const [snapshots, setSnapshots] = useState([]);
 
   useEffect(() => {
-    if (!event?.id || !event?._layerType) return;
-    if (event._layerType !== "events") {
+    if (!event?._layerType) {
+      setSnapshots([]);
+      return;
+    }
+    if (event._layerType !== "events" || event.id == null) {
       setSnapshots([]);
       return;
     }
@@ -850,6 +944,10 @@ export default function EventPanel() {
         `}</style>
       </aside>
     );
+  }
+
+  if (event._layerType?.startsWith("ctx_") || event._layerType === "territorial") {
+    return <ContextLayerDetail data={event} onClose={onClose} />;
   }
 
   if (event._layerType === "telegram") {

@@ -91,6 +91,8 @@ export const api = {
   getTelegramUnmappedPosts: (params) =>
     fetchJSON(`${BASE}/api/telegram/posts/unmapped?${new URLSearchParams(params || {})}`),
 
+  getTelegramUnmappedChannels: () => fetchJSON(`${BASE}/api/telegram/posts/unmapped/channels`),
+
   getTelegramPost: (id) => fetchJSON(`${BASE}/api/telegram/posts/${encodeURIComponent(id)}`),
 
   getContextManifest: () => fetchJSON(`${BASE}/api/context/manifest`),

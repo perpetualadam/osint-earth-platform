@@ -1,5 +1,10 @@
 import Dexie from "dexie";
 
+/**
+ * Offline IndexedDB. If the console shows Dexie’s “Workaround for Chrome UnknownError on open()” once,
+ * that is Dexie retrying after a flaky first open (common in Chrome); the database usually works afterward.
+ * Persistent failures: free disk space, private mode, or clear site data for this origin.
+ */
 export const db = new Dexie("osint-earth-offline");
 
 db.version(1).stores({

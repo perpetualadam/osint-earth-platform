@@ -2,6 +2,7 @@ import React, { useEffect, useRef, forwardRef, useImperativeHandle } from "react
 import {
   Viewer,
   Cartesian3,
+  Cartographic,
   createWorldTerrainAsync,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
@@ -21,7 +22,13 @@ import {
   GeoJsonDataSource,
   Rectangle,
   ConstantProperty,
+  JulianDate,
+  Cartesian2,
+  LabelStyle,
+  BillboardGraphics,
+  LabelGraphics,
 } from "cesium";
+import "cesium/Build/Cesium/Widgets/widgets.css";
 
 /** Cesium cannot render polygon outlines on terrain-clamped geometry; disables spurious console warnings. */
 function disableClampedPolygonOutlines(dataSource) {
@@ -31,7 +38,34 @@ function disableClampedPolygonOutlines(dataSource) {
     }
   }
 }
-import "cesium/Build/Cesium/Widgets/widgets.css";
+
+/** GeoJSON / graphics properties need a time for getValue(); adds lat/lon from entity position. */
+function entityPropsForPick(entity) {
+  const time = JulianDate.now();
+  const props = {};
+  const bag = entity.properties;
+  if (bag && bag.propertyNames) {
+    bag.propertyNames.forEach((name) => {
+      const val = bag[name];
+      try {
+        props[name] = typeof val?.getValue === "function" ? val.getValue(time) : val;
+      } catch {
+        props[name] = val;
+      }
+    });
+  }
+  if (entity.position) {
+    try {
+      const c = entity.position.getValue(time);
+      if (c) {
+        const carto = Cartographic.fromCartesian(c);
+        props.lon = CesiumMath.toDegrees(carto.longitude);
+        props.lat = CesiumMath.toDegrees(carto.latitude);
+      }
+    } catch (_) {}
+  }
+  return props;
+}
 import { useStore } from "../hooks/useStore";
 import { useDebounce } from "../hooks/useDebounce";
 import { offlineApi } from "../services/offlineApi";
@@ -82,6 +116,79 @@ const EVENT_ICONS = {
 };
 
 const TELEGRAM_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="11" fill="rgb(56,189,248)" stroke="rgb(255,255,255)" stroke-width="2"/><path d="M6 13 L18 8 L14 18 L12 13 Z" fill="rgb(255,255,255)"/></svg>`)}`;
+
+/** Runway + tower silhouette — distinct from live aircraft PLANE_SVG */
+const AIRPORT_MARKER_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <circle cx="16" cy="16" r="14" fill="rgb(30,58,95)" stroke="rgb(126,184,255)" stroke-width="1.5"/>
+  <path fill="rgb(126,184,255)" d="M8 20h16v2H8zm2-6l6-4 6 4v4H10zm5 0V9h2v5"/>
+  <rect x="14" y="6" width="4" height="5" rx="0.5" fill="rgb(168,200,232)"/>
+</svg>`)}`;
+
+const PORT_MARKER_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <circle cx="16" cy="16" r="14" fill="rgb(26,77,74)" stroke="rgb(94,234,212)" stroke-width="1.5"/>
+  <path fill="rgb(94,234,212)" d="M6 18h20v2H6zm2-4l4-6h8l4 6v2H8zm6-6v8h4v-8"/>
+</svg>`)}`;
+
+function readContextPointName(entity, time) {
+  const p = entity.properties;
+  if (!p) return "";
+  const get = (k) => {
+    try {
+      const v = p[k];
+      if (v == null) return "";
+      return typeof v.getValue === "function" ? String(v.getValue(time) ?? "") : String(v);
+    } catch {
+      return "";
+    }
+  };
+  return (
+    get("name") ||
+    get("Name") ||
+    get("title") ||
+    get("icao") ||
+    get("iata") ||
+    get("unlocode") ||
+    ""
+  ).trim();
+}
+
+function styleContextPointDataSource(ds, apiId) {
+  const time = JulianDate.now();
+  const image = apiId === "ports" ? PORT_MARKER_SVG : AIRPORT_MARKER_SVG;
+  for (const entity of ds.entities.values) {
+    if (!entity.position) continue;
+    entity.point = undefined;
+    entity.label = undefined;
+    // NONE + ellipsoid positions from GeoJsonDataSource (clampToGround: false for points) so icons
+    // track the globe. CLAMP_TO_GROUND + disableDepthTestDistance: Infinity can stick to the screen
+    // in some Cesium/terrain setups.
+    entity.billboard = new BillboardGraphics({
+      image,
+      width: 28,
+      height: 28,
+      verticalOrigin: VerticalOrigin.BOTTOM,
+      horizontalOrigin: HorizontalOrigin.CENTER,
+      heightReference: HeightReference.NONE,
+      scaleByDistance: new NearFarScalar(5e3, 1.15, 2e6, 0.45),
+    });
+    const name = readContextPointName(entity, time);
+    if (name) {
+      entity.label = new LabelGraphics({
+        text: name,
+        font: "600 12px system-ui, sans-serif",
+        fillColor: Color.WHITE,
+        outlineColor: Color.BLACK,
+        outlineWidth: 3,
+        style: LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: VerticalOrigin.BOTTOM,
+        horizontalOrigin: HorizontalOrigin.CENTER,
+        pixelOffset: new Cartesian2(0, -24),
+        heightReference: HeightReference.NONE,
+        scaleByDistance: new NearFarScalar(5e3, 1.0, 2e6, 0.5),
+      });
+    }
+  }
+}
 
 function createSatelliteProvider() {
   return new UrlTemplateImageryProvider({
@@ -288,14 +395,7 @@ const GlobeViewer = forwardRef((_props, ref) => {
         const entities = id;
         const items = [];
         for (const entity of entities) {
-          const props = {};
-          const bag = entity.properties;
-          if (bag && bag.propertyNames) {
-            bag.propertyNames.forEach((name) => {
-              const val = bag[name];
-              props[name] = typeof val?.getValue === "function" ? val.getValue() : val;
-            });
-          }
+          const props = entityPropsForPick(entity);
           if (Object.keys(props).length > 0) {
             for (let i = 0; i < viewer.dataSources.length; i++) {
               const ds = viewer.dataSources.get(i);
@@ -312,14 +412,7 @@ const GlobeViewer = forwardRef((_props, ref) => {
       }
 
       const entity = id;
-      const props = {};
-      const bag = entity.properties;
-      if (bag && bag.propertyNames) {
-        bag.propertyNames.forEach((name) => {
-          const val = bag[name];
-          props[name] = typeof val?.getValue === "function" ? val.getValue() : val;
-        });
-      }
+      const props = entityPropsForPick(entity);
 
       if (Object.keys(props).length > 0) {
         for (let i = 0; i < viewer.dataSources.length; i++) {
@@ -795,6 +888,7 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
           clampToGround: !isPointLayer,
         });
         if (!isPointLayer) disableClampedPolygonOutlines(ds);
+        else styleContextPointDataSource(ds, apiId);
         ds.name = layerKey;
         if (!guard()) return;
         await viewer.dataSources.add(ds);

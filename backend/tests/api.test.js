@@ -284,4 +284,10 @@ describe("Telegram API", () => {
     assert(Array.isArray(data.posts));
     assert(typeof data.total === "number");
   });
+
+  it("GET /api/telegram/posts/unmapped/channels returns channels array", async () => {
+    const { status, data } = await get("/api/telegram/posts/unmapped/channels");
+    assert.equal(status, 200);
+    assert(Array.isArray(data.channels));
+  });
 });

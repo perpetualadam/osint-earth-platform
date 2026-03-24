@@ -57,7 +57,7 @@ app.get("/api/health/live", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.use("/api", rateLimit({ max: 120, windowMs: 60_000 }));
+app.use("/api", rateLimit({ windowMs: 60_000 }));
 
 app.locals.pool = pool;
 app.locals.redis = redis;
