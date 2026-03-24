@@ -116,6 +116,11 @@ describe("Aircraft API", () => {
     assert.equal(data.type, "FeatureCollection");
   });
 
+  it("GET /api/aircraft/state/:icao24 rejects invalid id", async () => {
+    const { status } = await get("/api/aircraft/state/not_a_hex_icao");
+    assert.equal(status, 400);
+  });
+
   it("GET /api/aircraft/:icao24/history returns track", async () => {
     const { status, data } = await get("/api/aircraft/abc123/history");
     assert.equal(status, 200);
@@ -271,5 +276,12 @@ describe("Telegram API", () => {
     const { status, data } = await get("/api/telegram/posts?limit=5");
     assert.equal(status, 200);
     assert(Array.isArray(data.posts));
+  });
+
+  it("GET /api/telegram/posts/unmapped returns posts and total", async () => {
+    const { status, data } = await get("/api/telegram/posts/unmapped?limit=5");
+    assert.equal(status, 200);
+    assert(Array.isArray(data.posts));
+    assert(typeof data.total === "number");
   });
 });

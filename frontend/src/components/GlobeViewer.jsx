@@ -20,7 +20,17 @@ import {
   Math as CesiumMath,
   GeoJsonDataSource,
   Rectangle,
+  ConstantProperty,
 } from "cesium";
+
+/** Cesium cannot render polygon outlines on terrain-clamped geometry; disables spurious console warnings. */
+function disableClampedPolygonOutlines(dataSource) {
+  for (const entity of dataSource.entities.values) {
+    if (defined(entity.polygon)) {
+      entity.polygon.outline = new ConstantProperty(false);
+    }
+  }
+}
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import { useStore } from "../hooks/useStore";
 import { useDebounce } from "../hooks/useDebounce";
@@ -539,6 +549,8 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
   if (filters.severity_min != null && filters.severity_min !== "") params.severity_min = filters.severity_min;
 
   const aircraftParams = { live: "false" };
+  if (timeRange.timeStart) aircraftParams.time_start = timeRange.timeStart;
+  if (timeRange.timeEnd) aircraftParams.time_end = timeRange.timeEnd;
   if (timeRange.aircraftPreset && timeRange.aircraftPreset !== "all") {
     aircraftParams.preset = timeRange.aircraftPreset;
   }
@@ -782,6 +794,7 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
           strokeWidth: isPointLayer ? 1 : 2,
           clampToGround: !isPointLayer,
         });
+        if (!isPointLayer) disableClampedPolygonOutlines(ds);
         ds.name = layerKey;
         if (!guard()) return;
         await viewer.dataSources.add(ds);
@@ -807,6 +820,7 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
         strokeWidth: 3,
         clampToGround: true,
       });
+      disableClampedPolygonOutlines(ds);
       ds.name = "territorial";
       if (!guard()) return;
       await viewer.dataSources.add(ds);
@@ -872,8 +886,8 @@ async function loadDataLayers(viewer, layers, dsRef, isCancelled = () => false, 
               semiMinorAxis: config.radius,
               material: color,
               outline: false,
-              height: 0,
-              heightReference: HeightReference.CLAMP_TO_GROUND,
+              height: 400,
+              heightReference: HeightReference.NONE,
             },
             properties: {
               _layerType: key,

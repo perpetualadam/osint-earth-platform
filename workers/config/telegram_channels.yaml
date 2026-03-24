@@ -5,14 +5,26 @@
 #   - "another_channel"
 
 channels:
-  - username: BBC_News0
+  - username: BBCWorldoffl
   - username: aljazeeraglobal
+  - username: MiddleEasteye_TG
   - username: sitrep
   - username: Rueters
   - username: associated_press_news
   - username: molfar_global
   - username: OSINTdefender
   - username: ClashReport
-
-
-
+  - username: Middle_East_Spectator
+  - username: ukraine_watch
+  - username: The_Jerusalem_Post
+  - username: geopolitics_prime
+  - username: africanewsofficial
+  - username: DDGeopolitics
+  - username: guardian
+  - username: rebeccabarsef
+  - username: IntelRepublic
+  - username: allafrica
+  - username: France24_en
+  - username: SkyNews
+  - username: InternationalNewsFeed
+  - username: aSkyNewsBreakingChannel

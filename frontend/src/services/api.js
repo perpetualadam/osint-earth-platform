@@ -39,6 +39,9 @@ export const api = {
   getAircraftType: (icao24) =>
     fetchJSON(`${BASE}/api/aircraft/${icao24}/type`),
 
+  getAircraftState: (icao24) =>
+    fetchJSON(`${BASE}/api/aircraft/state/${encodeURIComponent(icao24)}`),
+
   getAircraftHistory: (icao24, params) =>
     fetchJSON(`${BASE}/api/aircraft/${icao24}/history?${new URLSearchParams(params)}`),
 
@@ -84,6 +87,9 @@ export const api = {
 
   getTelegramPosts: (params) =>
     fetchJSON(`${BASE}/api/telegram/posts?${new URLSearchParams(params)}`),
+
+  getTelegramUnmappedPosts: (params) =>
+    fetchJSON(`${BASE}/api/telegram/posts/unmapped?${new URLSearchParams(params || {})}`),
 
   getTelegramPost: (id) => fetchJSON(`${BASE}/api/telegram/posts/${encodeURIComponent(id)}`),
 

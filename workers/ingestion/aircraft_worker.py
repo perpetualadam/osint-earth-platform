@@ -70,7 +70,10 @@ class AircraftWorker(BaseWorker):
             lng, lat = s[5], s[6]
             if lng is None or lat is None:
                 continue
-            altitude = s[7]
+            # OpenSky: [7]=baro_altitude m, [13]=geo_altitude m — baro is often null while geo is set.
+            baro = s[7] if len(s) > 7 else None
+            geo_alt = s[13] if len(s) > 13 else None
+            altitude = baro if baro is not None else geo_alt
             velocity = s[9]
             heading = s[10]
             on_ground = s[8]

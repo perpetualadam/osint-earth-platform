@@ -61,8 +61,22 @@ router.get("/", async (req, res, next) => {
     if (live) {
       clauses.push(`recorded_at >= NOW() - INTERVAL '2 minutes'`);
     } else {
-      if (req.query.time_start) { clauses.push(`recorded_at >= $${i++}`); params.push(req.query.time_start); }
-      if (req.query.time_end)   { clauses.push(`recorded_at <= $${i++}`); params.push(req.query.time_end); }
+      if (req.query.time_start) {
+        clauses.push(`recorded_at >= $${i++}`);
+        params.push(req.query.time_start);
+      }
+      if (req.query.time_end) {
+        clauses.push(`recorded_at <= $${i++}`);
+        params.push(req.query.time_end);
+      }
+      // Without any time bounds, DISTINCT ON over all history + bbox scans every partition → 504s.
+      if (!req.query.time_start && !req.query.time_end) {
+        const days = Math.min(
+          Math.max(parseInt(process.env.AIRCRAFT_HISTORY_DEFAULT_DAYS || "14", 10), 1),
+          90
+        );
+        clauses.push(`recorded_at >= NOW() - INTERVAL '${days} days'`);
+      }
     }
 
     const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
@@ -112,6 +126,32 @@ router.get("/", async (req, res, next) => {
     }
 
     res.json({ type: "FeatureCollection", features });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Latest track row for one aircraft (live telemetry for detail panel). */
+router.get("/state/:icao24", async (req, res, next) => {
+  try {
+    const { pool } = req.app.locals;
+    const icao = String(req.params.icao24 || "").trim().toLowerCase();
+    if (!icao || !/^[a-f0-9]{6}$/.test(icao)) {
+      return res.status(400).json({ error: "Invalid ICAO24" });
+    }
+    const { rows } = await pool.query(
+      `SELECT icao24, callsign, altitude, velocity, heading, on_ground,
+              origin_country, category, vertical_rate, squawk, recorded_at
+       FROM aircraft_tracks
+       WHERE icao24 = $1
+       ORDER BY recorded_at DESC
+       LIMIT 1`,
+      [icao]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: "No recent track" });
+    }
+    res.json(rows[0]);
   } catch (err) {
     next(err);
   }

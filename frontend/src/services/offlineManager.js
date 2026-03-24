@@ -11,6 +11,8 @@ import {
   cacheSnapshots,
   getCacheStats,
   clearAllCaches,
+  getSyncQueue,
+  clearSyncQueue,
 } from "./localDb";
 import { countTiles } from "../utils/tilemath";
 
@@ -235,7 +237,6 @@ export async function importRegionData(file) {
  * when connectivity is restored.
  */
 export async function processSyncQueue() {
-  const { getSyncQueue, clearSyncQueue } = await import("./localDb");
   const queue = await getSyncQueue();
   if (!queue.length) return 0;
 

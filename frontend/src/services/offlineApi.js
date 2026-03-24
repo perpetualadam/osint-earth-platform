@@ -106,4 +106,12 @@ export const offlineApi = {
       return { type: "FeatureCollection", features: [] };
     }
   },
+
+  async getTelegramUnmappedPosts(params) {
+    try {
+      return await api.getTelegramUnmappedPosts(params);
+    } catch {
+      return { posts: [], total: 0, limit: 0, offset: 0 };
+    }
+  },
 };

@@ -1,21 +1,94 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useStore } from "../hooks/useStore";
 import { offlineApi } from "../services/offlineApi";
 import { api } from "../services/api";
 
+/** Telegram blocks raw t.me in iframes (X-Frame-Options). Official widget loads from telegram.org. */
+function TelegramPostWidget({ username, telegramMessageId }) {
+  const containerRef = useRef(null);
+  const loadedKeyRef = useRef("");
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !username || telegramMessageId == null) return;
+    const u = String(username).replace(/^@/, "").trim();
+    const mid = Number(telegramMessageId);
+    if (!u || !Number.isFinite(mid) || mid <= 0) return;
+    const key = `${u}/${Math.floor(mid)}`;
+    if (loadedKeyRef.current === key && el.querySelector("iframe")) return;
+    loadedKeyRef.current = key;
+    el.innerHTML = "";
+    const s = document.createElement("script");
+    s.src = "https://telegram.org/js/telegram-widget.js?22";
+    s.async = true;
+    s.setAttribute("data-telegram-post", key);
+    s.setAttribute("data-width", "100%");
+    el.appendChild(s);
+    return () => {
+      loadedKeyRef.current = "";
+      el.innerHTML = "";
+    };
+  }, [username, telegramMessageId]);
+  return (
+    <div className="ep-tg-widget-wrap" style={{ marginTop: 10 }}>
+      <p className="ep-desc" style={{ marginBottom: 6 }}>
+        Live embed (Telegram widget — public channels only). If it stays empty, use “Open in Telegram”.
+      </p>
+      <div ref={containerRef} className="ep-tg-widget-host" />
+    </div>
+  );
+}
+
 function TelegramPostDetail({ data, onClose }) {
-  const ch = data.channel_username || "channel";
-  const body = data.text_en || data.text || "—";
-  const posted = data.posted_at
-    ? new Date(data.posted_at).toLocaleString()
+  const [serverRow, setServerRow] = useState(null);
+  const [serverErr, setServerErr] = useState(false);
+
+  useEffect(() => {
+    setServerRow(null);
+    setServerErr(false);
+    const id = data?.id;
+    if (id == null || id === "") return;
+    let cancelled = false;
+    api
+      .getTelegramPost(String(id))
+      .then((row) => {
+        if (cancelled || !row?.id) return;
+        setServerRow(row);
+      })
+      .catch(() => {
+        if (!cancelled) setServerErr(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.id]);
+
+  /** Globe pick can drop fields; API row matches DB and deep links (?telegram=id). */
+  const row = serverRow
+    ? {
+        ...data,
+        ...serverRow,
+        _layerType: "telegram",
+        lat: serverRow.lat != null ? Number(serverRow.lat) : data.lat,
+        lon: serverRow.lon != null ? Number(serverRow.lon) : data.lon,
+        metadata:
+          serverRow.metadata != null && typeof serverRow.metadata === "object"
+            ? serverRow.metadata
+            : data.metadata,
+      }
+    : data;
+
+  const ch = row.channel_username || "channel";
+  const body = row.text_en || row.text || "—";
+  const posted = row.posted_at
+    ? new Date(row.posted_at).toLocaleString()
     : "—";
-  const meta = data.metadata && typeof data.metadata === "object" ? data.metadata : {};
+  const meta = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
   const tgUrl = meta.telegram_url;
   const media = meta.media;
-  const mapShare =
-    data.id != null && typeof window !== "undefined"
-      ? `${window.location.origin}${window.location.pathname}?telegram=${encodeURIComponent(String(data.id))}`
-      : null;
+  const msgId = row.telegram_message_id ?? meta.message_id;
+  const embedUser = (ch && ch !== "channel" ? ch : "").replace(/^@/, "");
+  const canWidget = Boolean(embedUser && msgId != null && Number.isFinite(Number(msgId)) && Number(msgId) > 0);
+
   return (
     <aside className="event-panel panel ep-telegram-detail">
       <div className="ep-header">
@@ -24,36 +97,43 @@ function TelegramPostDetail({ data, onClose }) {
       </div>
       <div className="ep-type-badge ep-badge-telegram">Telegram</div>
       <div className="ep-meta">
-        <div className="ep-row"><span>Posted</span><span>{posted}</span></div>
-        {data.id != null && (
-          <div className="ep-row"><span>Post id</span><span>{data.id}</span></div>
+        {data?.id != null && !serverRow && !serverErr && (
+          <p className="ep-desc" style={{ marginBottom: 4 }}>Loading full post…</p>
         )}
-        {data.geo_confidence != null && (
-          <div className="ep-row"><span>Geo confidence</span><span>{Number(data.geo_confidence).toFixed(2)}</span></div>
+        {serverErr && (
+          <p className="ep-desc" style={{ marginBottom: 4, color: "var(--error, #f87171)" }}>
+            Could not load this post from the API (check backend / rebuild). Showing map data only.
+          </p>
+        )}
+        <div className="ep-row"><span>Posted</span><span>{posted}</span></div>
+        {row.id != null && (
+          <div className="ep-row">
+            <span>Database id</span>
+            <span title="Internal id for API / share links from notifications">{row.id}</span>
+          </div>
+        )}
+        {row.geo_confidence != null && (
+          <div className="ep-row"><span>Geo confidence</span><span>{Number(row.geo_confidence).toFixed(2)}</span></div>
         )}
         {media?.type && (
           <div className="ep-row"><span>Attachment</span><span>{media.type}</span></div>
         )}
-        {media?.type === "video" && (
+        {canWidget && <TelegramPostWidget username={embedUser} telegramMessageId={msgId} />}
+        {media?.type === "video" && !canWidget && (
           <p className="ep-desc" style={{ marginTop: 6 }}>
-            Video is not streamed inside this app. Open the original message in Telegram to play it, or add a bot + getFile flow to expose HTTPS URLs.
+            No public @username or message id for this post — open in Telegram to watch video.
           </p>
         )}
         {tgUrl && (
           <a href={tgUrl} target="_blank" rel="noopener noreferrer" className="ep-link" style={{ marginTop: 6, display: "inline-block" }}>
-            Open in Telegram
-          </a>
-        )}
-        {mapShare && (
-          <a href={mapShare} className="ep-link" style={{ marginTop: 6, marginLeft: tgUrl ? 12 : 0, display: "inline-block" }}>
-            Copyable map link
+            Open channel post in Telegram
           </a>
         )}
         <div className="ep-desc" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{body}</div>
-        {data.text_en && data.text && data.text !== data.text_en && (
+        {row.text_en && row.text && row.text !== row.text_en && (
           <details className="ep-desc" style={{ marginTop: 8 }}>
             <summary>Original text</summary>
-            <div style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{data.text}</div>
+            <div style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{row.text}</div>
           </details>
         )}
       </div>
@@ -98,6 +178,22 @@ function TelegramPostDetail({ data, onClose }) {
           margin-bottom: 12px;
         }
         .ep-telegram-detail .ep-badge-telegram { background: #38bdf822; color: #38bdf8; border: 1px solid #38bdf844; }
+        .ep-tg-widget-wrap {
+          flex-shrink: 0;
+          contain: layout style;
+        }
+        .ep-tg-widget-host {
+          height: 280px;
+          min-height: 280px;
+          flex-shrink: 0;
+          overflow: auto;
+          overflow-x: hidden;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 8px;
+          background: var(--bg-hover);
+          box-sizing: border-box;
+        }
       `}</style>
     </aside>
   );
@@ -106,6 +202,7 @@ function TelegramPostDetail({ data, onClose }) {
 function AircraftDetail({ data, onClose }) {
   const [typeInfo, setTypeInfo] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [live, setLive] = useState(null);
 
   useEffect(() => {
     if (!data.icao24) return;
@@ -115,6 +212,44 @@ function AircraftDetail({ data, onClose }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [data.icao24]);
+
+  useEffect(() => {
+    if (!data.icao24) return;
+    let cancelled = false;
+    api
+      .getAircraftState(data.icao24)
+      .then((row) => {
+        if (!cancelled && row?.icao24) setLive(row);
+      })
+      .catch(() => {
+        if (!cancelled) setLive(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [data.icao24]);
+
+  const d = live
+    ? {
+        ...data,
+        callsign: live.callsign ?? data.callsign,
+        altitude: live.altitude ?? data.altitude,
+        velocity: live.velocity ?? data.velocity,
+        heading: live.heading ?? data.heading,
+        on_ground: live.on_ground ?? data.on_ground,
+        vertical_rate: live.vertical_rate ?? data.vertical_rate,
+        squawk: live.squawk ?? data.squawk,
+        origin_country: live.origin_country || data.origin_country,
+        category: live.category || data.category,
+      }
+    : data;
+
+  const altM =
+    d.altitude != null && Number.isFinite(Number(d.altitude))
+      ? Number(d.altitude)
+      : d.on_ground
+        ? 0
+        : null;
 
   const typeName = typeInfo?.manufacturer && typeInfo?.type
     ? `${typeInfo.manufacturer} ${typeInfo.type}`
@@ -131,7 +266,7 @@ function AircraftDetail({ data, onClose }) {
   return (
     <aside className="event-panel panel">
       <div className="ep-header">
-        <h2 className="ep-title">{data.callsign || data.icao24}</h2>
+        <h2 className="ep-title">{d.callsign || data.icao24}</h2>
         <button className="ep-close" onClick={onClose}>&times;</button>
       </div>
       <div className="ep-badge-row">
@@ -154,18 +289,25 @@ function AircraftDetail({ data, onClose }) {
           </div>
         )}
         <div className="ep-row"><span>ICAO24</span><span>{data.icao24}</span></div>
-        <div className="ep-row"><span>Callsign</span><span>{data.callsign || "—"}</span></div>
+        <div className="ep-row"><span>Callsign</span><span>{d.callsign || "—"}</span></div>
         {typeInfo?.icao_type && <div className="ep-row"><span>Type Code</span><span>{typeInfo.icao_type}</span></div>}
-        {data.origin_country && <div className="ep-row"><span>Country</span><span>{data.origin_country}</span></div>}
-        {data.category && <div className="ep-row"><span>Category</span><span>{data.category}</span></div>}
-        <div className="ep-row"><span>Altitude</span><span>{data.altitude != null ? `${Math.round(data.altitude).toLocaleString()} m / ${Math.round(data.altitude * 3.281).toLocaleString()} ft` : "—"}</span></div>
-        <div className="ep-row"><span>Speed</span><span>{data.velocity != null ? `${Math.round(data.velocity * 1.944)} kts / ${Math.round(data.velocity * 3.6)} km/h / ${Math.round(data.velocity * 2.237)} mph` : "—"}</span></div>
-        {data.vertical_rate != null && data.vertical_rate !== 0 && (
-          <div className="ep-row"><span>Climb Rate</span><span>{Math.round(data.vertical_rate * 196.85)} ft/min</span></div>
+        {d.origin_country && <div className="ep-row"><span>Country</span><span>{d.origin_country}</span></div>}
+        {d.category && <div className="ep-row"><span>Category</span><span>{d.category}</span></div>}
+        <div className="ep-row">
+          <span>Altitude</span>
+          <span>
+            {altM != null
+              ? `${Math.round(altM).toLocaleString()} m / ${Math.round(altM * 3.281).toLocaleString()} ft${d.on_ground && altM === 0 ? " (ground)" : ""}`
+              : "—"}
+          </span>
+        </div>
+        <div className="ep-row"><span>Speed</span><span>{d.velocity != null ? `${Math.round(d.velocity * 1.944)} kts / ${Math.round(d.velocity * 3.6)} km/h / ${Math.round(d.velocity * 2.237)} mph` : "—"}</span></div>
+        {d.vertical_rate != null && d.vertical_rate !== 0 && (
+          <div className="ep-row"><span>Climb Rate</span><span>{Math.round(d.vertical_rate * 196.85)} ft/min</span></div>
         )}
-        <div className="ep-row"><span>Heading</span><span>{data.heading != null ? `${Math.round(data.heading)}°` : "—"}</span></div>
-        {data.squawk && <div className="ep-row"><span>Squawk</span><span>{data.squawk}</span></div>}
-        <div className="ep-row"><span>On Ground</span><span>{data.on_ground ? "Yes" : "No"}</span></div>
+        <div className="ep-row"><span>Heading</span><span>{d.heading != null ? `${Math.round(d.heading)}°` : "—"}</span></div>
+        {d.squawk && <div className="ep-row"><span>Squawk</span><span>{d.squawk}</span></div>}
+        <div className="ep-row"><span>On Ground</span><span>{d.on_ground ? "Yes" : "No"}</span></div>
       </div>
     </aside>
   );

@@ -45,7 +45,7 @@ router.get("/geojson", async (req, res, next) => {
     const { where, params, nextParam } = buildTelegramWhere(req.query);
     const limit = Math.min(parseInt(req.query.limit || "2000", 10), 5000);
     const sql = `
-      SELECT id, channel_username, text, text_en, posted_at, geo_confidence, metadata,
+      SELECT id, telegram_message_id, channel_username, text, text_en, posted_at, geo_confidence, metadata,
              ST_AsGeoJSON(location)::json AS geometry
       FROM telegram_posts
       ${where}
@@ -61,6 +61,7 @@ router.get("/geojson", async (req, res, next) => {
         geometry: r.geometry,
         properties: {
           id: r.id,
+          telegram_message_id: r.telegram_message_id,
           channel_username: r.channel_username,
           text: r.text,
           text_en: r.text_en,
@@ -73,6 +74,36 @@ router.get("/geojson", async (req, res, next) => {
   } catch (err) {
     if (err.code === "42P01" || /telegram_posts/.test(err.message || "")) {
       return res.json({ type: "FeatureCollection", features: [] });
+    }
+    next(err);
+  }
+});
+
+/** Posts with no geocoded point (not shown on the globe layer). Must be registered before /posts/:id. */
+router.get("/posts/unmapped", async (req, res, next) => {
+  try {
+    const { pool } = req.app.locals;
+    const limit = Math.min(parseInt(req.query.limit || "80", 10), 200);
+    const offset = Math.max(0, parseInt(req.query.offset || "0", 10));
+    const [{ rows: countRows }, { rows }] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*)::int AS n FROM telegram_posts WHERE location IS NULL`
+      ),
+      pool.query(
+        `SELECT id, telegram_message_id, channel_id, channel_username, text, text_en,
+                posted_at, metadata
+         FROM telegram_posts
+         WHERE location IS NULL
+         ORDER BY posted_at DESC
+         LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      ),
+    ]);
+    const total = countRows[0]?.n ?? 0;
+    res.json({ posts: rows, total, limit, offset });
+  } catch (err) {
+    if (err.code === "42P01") {
+      return res.json({ posts: [], total: 0, limit: 0, offset: 0 });
     }
     next(err);
   }
@@ -92,11 +123,19 @@ router.get("/posts/:id", async (req, res, next) => {
        FROM telegram_posts WHERE id = $1`,
       [id]
     );
-    if (!rows.length) return res.status(404).json({ error: "Not found" });
+    if (!rows.length) {
+      return res.status(404).json({
+        error: "Not found",
+        hint: "No telegram_posts row with this id. Use the numeric id from the map popup (DB id), not the Telegram message id.",
+      });
+    }
     res.json(rows[0]);
   } catch (err) {
     if (err.code === "42P01" || /telegram_posts/.test(err.message || "")) {
-      return res.status(404).json({ error: "Not found" });
+      return res.status(503).json({
+        error: "Telegram table unavailable",
+        hint: "Apply database/schema.sql or ensure telegram_posts exists.",
+      });
     }
     next(err);
   }

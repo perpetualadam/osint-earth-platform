@@ -12,10 +12,13 @@ export function escapeHtml(s) {
     .replace(/'/g, "&#39;");
 }
 
-/** Absolute URL to open the SPA on an event or anomaly (APP_URL + query). */
+/** Absolute URL to open the SPA (APP_URL + query). kind: event | anomaly | telegram */
 export function mapOpenHref(baseUrl, kind, id) {
   const b = String(baseUrl || "").trim().replace(/\/$/, "");
   if (!b || id == null) return "";
-  const q = kind === "anomaly" ? `anomaly=${encodeURIComponent(String(id))}` : `event=${encodeURIComponent(String(id))}`;
+  let q;
+  if (kind === "anomaly") q = `anomaly=${encodeURIComponent(String(id))}`;
+  else if (kind === "telegram") q = `telegram=${encodeURIComponent(String(id))}`;
+  else q = `event=${encodeURIComponent(String(id))}`;
   return `${b}/?${q}`;
 }

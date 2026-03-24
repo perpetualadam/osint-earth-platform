@@ -135,7 +135,7 @@
 .entity-popup-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 140;
+  z-index: 50000;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: flex-end;
@@ -156,17 +156,22 @@
   width: 100%;
   max-height: min(88vh, 900px);
   overflow-y: auto;
+  overflow-x: hidden;
   margin: 0;
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   border: 1px solid var(--border);
+  scrollbar-gutter: stable;
 }
 
 @media (min-width: 900px) {
+  /* Top-align so when Telegram (or other) embeds grow in height, the panel is not
+     re-centered every frame — that caused visible “shaking”. */
   .entity-popup-backdrop {
-    align-items: center;
+    align-items: flex-start;
     justify-content: flex-end;
     padding: 24px;
+    padding-top: max(24px, 5vh);
   }
   .entity-popup {
     width: min(400px, 40vw);

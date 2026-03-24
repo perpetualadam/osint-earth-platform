@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import GlobeViewer from "./components/GlobeViewer";
 import LayerManager from "./components/LayerManager";
 import TimelineBar from "./components/TimelineBar";
@@ -12,6 +13,7 @@ import SearchBar from "./components/SearchBar";
 import ExportButton from "./components/ExportButton";
 import ShareViewButton from "./components/ShareViewButton";
 import DataSourcesPanel from "./components/DataSourcesPanel";
+import TelegramUnmappedFeed from "./components/TelegramUnmappedFeed";
 import { useStore } from "./hooks/useStore";
 import { useNotifications } from "./hooks/useNotifications";
 import { api } from "./services/api";
@@ -45,6 +47,7 @@ export default function App() {
     const params = new URLSearchParams(search);
     const eventId = params.get("event");
     const anomalyId = params.get("anomaly");
+    const telegramPostId = params.get("telegram");
 
     const flyBboxFromView = (bbox) => {
       if (!bbox || bbox.length !== 4 || bbox.some((x) => typeof x !== "number" || Number.isNaN(x))) return;
@@ -118,6 +121,9 @@ export default function App() {
     }
 
     if (telegramPostId) {
+      useStore.setState((s) => ({
+        layers: { ...s.layers, telegram: true },
+      }));
       api.getTelegramPost(telegramPostId)
         .then((row) => {
           const lon = row.lon != null ? Number(row.lon) : NaN;
@@ -125,6 +131,7 @@ export default function App() {
           const payload = {
             id: row.id,
             channel_username: row.channel_username,
+            telegram_message_id: row.telegram_message_id,
             text: row.text,
             text_en: row.text_en,
             posted_at: row.posted_at,
@@ -196,6 +203,7 @@ export default function App() {
           <GlobeViewer ref={viewerRef} />
           <SearchBar viewerRef={viewerRef} />
           <MapLegend />
+          <TelegramUnmappedFeed />
           <TimelineBar viewerRef={viewerRef} />
           <ReplayControls viewerRef={viewerRef} />
           {webcamsOn && (
@@ -205,8 +213,11 @@ export default function App() {
             </div>
           )}
         </main>
+      </div>
 
-        {selectedEvent && (
+      {typeof document !== "undefined" &&
+        selectedEvent &&
+        createPortal(
           <div
             className="entity-popup-backdrop"
             role="presentation"
@@ -222,9 +233,9 @@ export default function App() {
             >
               <EventPanel />
             </div>
-          </div>
+          </div>,
+          document.body
         )}
-      </div>
 
       <SnapshotGallery />
       {showOffline && <OfflinePanel />}

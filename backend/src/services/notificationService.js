@@ -8,6 +8,7 @@ import { escapeHtml, mapOpenHref } from "../lib/digestHtml.js";
 
 const DIGEST_INTERVAL_MS = parseInt(process.env.NOTIFICATION_DIGEST_MINUTES || "15", 10) * 60 * 1000;
 const MAX_EVENTS_PER_DIGEST = 20;
+const MAX_TELEGRAM_PER_DIGEST = 15;
 const MAX_ANOMALIES_PER_DIGEST = 5;
 const REDIS_KEY_LAST_SENT = "notification_digest:last_sent";
 
@@ -96,9 +97,10 @@ function buildEventSnippet(row) {
   const date = formatDate(row.occurred_at);
   const source = (row.source || "").trim() || "—";
   const base = appBaseUrl();
-  const openLine = base ? `\n🔗 Open in app: ${mapOpenHref(base, "event", row.id)}` : "";
+  const mapUrl = base ? mapOpenHref(base, "event", row.id) : "";
+  const openLine = mapUrl ? `\nOpen in GlobeViewer (tap URL):\n${mapUrl}` : "";
   const headBlock = headline ? `${headline}\n` : "";
-  return `📍 ${country}\n${headBlock}${summary}\nSource: ${source} · Type: ${type}\nWhen: ${time} · ${date}\nDB id: ${row.id}${openLine}`;
+  return `📍 ${country}\n${headBlock}${summary}\nSource: ${source} · Type: ${type}\nWhen: ${time} · ${date}\nMap DB id: ${row.id}${openLine}`;
 }
 
 function buildEventSnippetHtml(row) {
@@ -113,9 +115,10 @@ function buildEventSnippetHtml(row) {
   const time = escapeHtml(formatTime(row.occurred_at));
   const date = escapeHtml(formatDate(row.occurred_at));
   const source = escapeHtml((row.source || "").trim() || "—");
-  const linkLine = base
-    ? `\n<a href="${escapeHtml(mapOpenHref(base, "event", row.id))}">Open in map · #${escapeHtml(String(row.id))}</a>`
-    : `\n<code>${escapeHtml(String(row.id))}</code>`;
+  const href = base ? mapOpenHref(base, "event", row.id) : "";
+  const linkLine = href
+    ? `\n<a href="${escapeHtml(href)}">Open in GlobeViewer</a> <code>(${escapeHtml(String(row.id))})</code>\n<a href="${escapeHtml(href)}">${escapeHtml(href)}</a>`
+    : `\n<code>${escapeHtml(String(row.id))}</code> — set APP_URL for a tap-to-open map link`;
   return `📍 ${country}\n${headBlock}${summary}\nSource: ${source} · Type: ${type}\nWhen: ${time} · ${date}${linkLine}`;
 }
 
@@ -171,10 +174,58 @@ function buildAnomalySnippetHtml(row) {
     ? descFn(row)
     : meta.description || meta.summary || `Unusual pattern detected. Score: ${row.score?.toFixed(1) ?? "—"}/10.`;
   const desc = escapeHtml(descPlain);
-  const linkLine = base
-    ? `\n<a href="${escapeHtml(mapOpenHref(base, "anomaly", row.id))}">Open in map · #${escapeHtml(String(row.id))}</a>`
-    : `\n<code>${escapeHtml(String(row.id))}</code>`;
+  const href = base ? mapOpenHref(base, "anomaly", row.id) : "";
+  const linkLine = href
+    ? `\n<a href="${escapeHtml(href)}">Open in GlobeViewer</a> <code>(${escapeHtml(String(row.id))})</code>\n<a href="${escapeHtml(href)}">${escapeHtml(href)}</a>`
+    : `\n<code>${escapeHtml(String(row.id))}</code> — set APP_URL for a tap-to-open map link`;
   return `⚠️ ${type}\n${desc}\nWhen: ${time} · ${date}${linkLine}`;
+}
+
+function telegramTgHref(row) {
+  const un = (row.channel_username || "").replace(/^@/, "").trim();
+  const mid = row.telegram_message_id;
+  if (!un || mid == null) return "";
+  return `https://t.me/${un}/${mid}`;
+}
+
+function buildTelegramSnippet(row) {
+  const ch = row.channel_username ? `@${String(row.channel_username).replace(/^@/, "")}` : "channel";
+  const body = truncate((row.text_en || row.text || "—").replace(/\s+/g, " "), 200);
+  const time = formatTime(row.posted_at);
+  const date = formatDate(row.posted_at);
+  const base = appBaseUrl();
+  const mapUrl = base ? mapOpenHref(base, "telegram", row.id) : "";
+  const tgUrl = telegramTgHref(row);
+  const lines = [
+    `💬 ${ch}`,
+    body,
+    `When: ${time} · ${date}`,
+    `TG message id: ${row.telegram_message_id} (channel) · Map DB id: ${row.id}`,
+  ];
+  if (tgUrl) lines.push(`Telegram: ${tgUrl}`);
+  if (mapUrl) {
+    lines.push("Open this post on the map (new tab)");
+    lines.push(mapUrl);
+  }
+  return lines.join("\n");
+}
+
+function buildTelegramSnippetHtml(row) {
+  const chRaw = row.channel_username ? `@${String(row.channel_username).replace(/^@/, "")}` : "channel";
+  const ch = escapeHtml(chRaw);
+  const body = escapeHtml(truncate((row.text_en || row.text || "—").replace(/\s+/g, " "), 200));
+  const time = escapeHtml(formatTime(row.posted_at));
+  const date = escapeHtml(formatDate(row.posted_at));
+  const base = appBaseUrl();
+  const mapHref = base ? mapOpenHref(base, "telegram", row.id) : "";
+  const tgUrl = telegramTgHref(row);
+  const tgLink = tgUrl
+    ? `\n<a href="${escapeHtml(tgUrl)}">Open in Telegram</a> <code>(msg ${escapeHtml(String(row.telegram_message_id))})</code>`
+    : `\n<code>msg ${escapeHtml(String(row.telegram_message_id))}</code>`;
+  const mapBlock = mapHref
+    ? `\n<a href="${escapeHtml(mapHref)}">Open this post on the map (new tab)</a>\n<a href="${escapeHtml(mapHref)}">${escapeHtml(mapHref)}</a>`
+    : `\n<code>DB ${escapeHtml(String(row.id))}</code> — set APP_URL for map link`;
+  return `<b>${escapeHtml("💬 ")}${ch}</b>\n${body}\nWhen: ${time} · ${date}${tgLink}${mapBlock}`;
 }
 
 async function buildDigest(pool, redis) {
@@ -199,7 +250,29 @@ async function buildDigest(pool, redis) {
     [since, MAX_ANOMALIES_PER_DIGEST]
   );
 
-  if (events.length === 0 && anomalies.length === 0) return { text: null, html: null, maxCreated: since };
+  let telegramPosts = [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, telegram_message_id, channel_username, text, text_en, posted_at, created_at
+       FROM telegram_posts
+       WHERE created_at > $1
+       ORDER BY created_at ASC
+       LIMIT $2`,
+      [since, MAX_TELEGRAM_PER_DIGEST]
+    );
+    telegramPosts = rows;
+  } catch (e) {
+    const msg = e?.message || String(e);
+    if (/42P01|telegram_posts/.test(msg)) {
+      // Table not migrated yet — skip telegram section
+    } else {
+      throw e;
+    }
+  }
+
+  if (events.length === 0 && anomalies.length === 0 && telegramPosts.length === 0) {
+    return { text: null, html: null, maxCreated: since };
+  }
 
   const now = new Date();
   const header = `🌍 OSINT Earth · ${formatTime(now)} · ${formatDate(now)}\n${"─".repeat(28)}`;
@@ -210,6 +283,15 @@ async function buildDigest(pool, redis) {
   for (const row of events) {
     parts.push("\n" + buildEventSnippet(row));
     htmlParts.push("\n\n" + buildEventSnippetHtml(row));
+  }
+
+  if (telegramPosts.length > 0) {
+    parts.push("\n\n💬 Telegram (geocoded posts)");
+    htmlParts.push(`\n\n<b>${escapeHtml("💬 Telegram (geocoded posts)")}</b>`);
+    for (const row of telegramPosts) {
+      parts.push("\n" + buildTelegramSnippet(row));
+      htmlParts.push("\n\n" + buildTelegramSnippetHtml(row));
+    }
   }
 
   if (anomalies.length > 0) {
@@ -223,6 +305,7 @@ async function buildDigest(pool, redis) {
 
   const maxCreated = [
     ...events.map((r) => r.created_at),
+    ...telegramPosts.map((r) => r.created_at),
     ...anomalies.map((r) => r.created_at),
   ].filter(Boolean).sort().pop();
 
@@ -249,7 +332,9 @@ async function buildDigest(pool, redis) {
     maxCreated: maxCreated ? new Date(maxCreated).toISOString() : since,
     eventCount: events.length,
     anomalyCount: anomalies.length,
+    telegramCount: telegramPosts.length,
     firstEventId: events[0]?.id ?? null,
+    firstTelegramId: telegramPosts[0]?.id ?? null,
     firstAnomalyId: anomalies[0]?.id ?? null,
   };
 }
@@ -303,8 +388,10 @@ export async function runDigest(pool, redis, io) {
       maxCreated,
       eventCount,
       anomalyCount,
+      telegramCount,
       firstEventId,
       firstAnomalyId,
+      firstTelegramId,
     } = await buildDigest(pool, redis);
     if (!text) return;
 
@@ -317,15 +404,21 @@ export async function runDigest(pool, redis, io) {
       base &&
       (firstEventId != null
         ? mapOpenHref(base, "event", firstEventId)
-        : firstAnomalyId != null
-          ? mapOpenHref(base, "anomaly", firstAnomalyId)
-          : `${base.replace(/\/$/, "")}/`);
+        : firstTelegramId != null
+          ? mapOpenHref(base, "telegram", firstTelegramId)
+          : firstAnomalyId != null
+            ? mapOpenHref(base, "anomaly", firstAnomalyId)
+            : `${base.replace(/\/$/, "")}/`);
 
     if (io) {
+      const bits = [`${eventCount} events`];
+      if (telegramCount > 0) bits.push(`${telegramCount} Telegram`);
+      bits.push(`${anomalyCount} anomalies`);
       io.emit("notifications:merged", {
         title: "OSINT Earth: Digest",
-        body: `${eventCount} events, ${anomalyCount} anomalies`,
+        body: bits.join(", "),
         events: { count: eventCount },
+        telegram: telegramCount,
         anomalies: anomalyCount,
         primaryUrl: primaryUrl || null,
       });
