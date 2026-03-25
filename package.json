@@ -1,0 +1,9 @@
+{
+  "name": "osint-earth-platform",
+  "private": true,
+  "scripts": {
+    "check:github-limits": "node scripts/check-github-file-limits.mjs --staged",
+    "git-hooks": "node scripts/enable-git-hooks.mjs",
+    "prepare": "node scripts/enable-git-hooks.mjs"
+  }
+}

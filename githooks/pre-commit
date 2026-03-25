@@ -1,0 +1,4 @@
+#!/bin/sh
+# Enforce GitHub per-file size limits on all staged blobs (repo-wide).
+ROOT="$(git rev-parse --show-toplevel)" || exit 1
+exec node "$ROOT/scripts/check-github-file-limits.mjs" --staged

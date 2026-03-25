@@ -11,8 +11,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "check:github-limits": "node ../scripts/check-github-file-limits.mjs --staged --prefix frontend/",
-    "check:github-limits:all": "node ../scripts/check-github-file-limits.mjs --staged"
+    "check:github-limits": "node ../scripts/check-github-file-limits.mjs --staged"
   },
   "dependencies": {
     "react": "^18.3.0",

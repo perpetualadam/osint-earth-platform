@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * GitHub.com rejects blobs > 100 MiB; 50 MiB triggers a warning on push.
- * Run before committing frontend (or any) paths: npm run check:github-limits --prefix frontend
+ * Repo-wide: githooks/pre-commit runs this on every commit (enable via npm install at root or
+ * `node scripts/enable-git-hooks.mjs`). Manual check: `npm run check:github-limits` from repo root.
+ * Optional scope: --staged --prefix some/dir/
  *
  * Per-file limit: splitting one huge file across commits does not help — use Git LFS or shrink the asset.
- * Chunked commits help when you have many separate files to land without one giant diff/review.
  */
 
 import { execSync } from 'node:child_process';
