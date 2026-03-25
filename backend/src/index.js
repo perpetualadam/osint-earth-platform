@@ -27,6 +27,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { rateLimit } from "./middleware/rateLimit.js";
 import { setupWebSocket } from "./websocket/live.js";
 import { startScheduledDigest } from "./services/notificationService.js";
+import { startOpsAlerts } from "./services/opsAlertsService.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -96,4 +97,5 @@ startScheduledDigest(pool, redis, io);
 const PORT = parseInt(process.env.API_PORT || "3001", 10);
 server.listen(PORT, process.env.API_HOST || "0.0.0.0", () => {
   console.log(`OSINT Earth API listening on :${PORT}`);
+  startOpsAlerts(server);
 });

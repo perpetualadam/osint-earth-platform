@@ -339,7 +339,8 @@ async function buildDigest(pool, redis) {
   };
 }
 
-async function sendTelegramPayload(chatId, token, payload) {
+/** Exported for ops / lifecycle alerts (same bot as digest; not channel ingest). */
+export async function sendTelegramPayload(chatId, token, payload) {
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
   const res = await fetch(url, {
     method: "POST",
@@ -436,13 +437,23 @@ export async function runDigest(pool, redis, io) {
   }
 }
 
+let digestIntervalId = null;
+
 /**
  * Start the scheduled digest. Call from index.js after server starts.
  */
 export function startScheduledDigest(pool, redis, io) {
   const run = () => runDigest(pool, redis, io);
   run(); // run once on startup (will send if there are events since last run)
-  setInterval(run, DIGEST_INTERVAL_MS);
+  digestIntervalId = setInterval(run, DIGEST_INTERVAL_MS);
+}
+
+/** Stop digest timer (e.g. before graceful shutdown). */
+export function stopScheduledDigest() {
+  if (digestIntervalId != null) {
+    clearInterval(digestIntervalId);
+    digestIntervalId = null;
+  }
 }
 
 /**

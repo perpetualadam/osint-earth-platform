@@ -35,6 +35,10 @@ pgdata/
 redisdata/
 miniodata/
 
+# Local health watchdog state (cron / dev)
+.health-watchdog-state.json
+backend/.health-watchdog-state.json
+
 # AI model weights (auto-downloaded at runtime)
 *.pt
 *.onnx

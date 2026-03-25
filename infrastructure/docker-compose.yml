@@ -104,6 +104,43 @@ services:
       AI_SERVICE_URL: http://ai-service:8000
     ports:
       - "3001:3001"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3001/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  # ---------------------------------------------------------------------------
+  # Optional: polls /api/health from **outside** the API (crash / kill -9 / hang).
+  # Same Telegram bot as digest; not Pyrogram ingest. Enable: docker compose --profile watchdog up -d
+  # ---------------------------------------------------------------------------
+  health-watchdog:
+    profiles:
+      - watchdog
+    image: node:20-alpine
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      HEALTHCHECK_URL: http://backend:3001
+      WATCHDOG_STATE_FILE: /var/lib/osint-watchdog/state.json
+    volumes:
+      - watchdog_state:/var/lib/osint-watchdog
+      - ../backend/scripts/telegram-health-watchdog.mjs:/app/watchdog.mjs:ro
+    command:
+      [
+        "sh",
+        "-c",
+        "while true; do node /app/watchdog.mjs || true; sleep 60; done",
+      ]
 
   # ---------------------------------------------------------------------------
   # Python ingestion workers
@@ -225,3 +262,4 @@ volumes:
   miniodata:
   nginx_cache:
   telegram_session:
+  watchdog_state:
