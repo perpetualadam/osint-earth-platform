@@ -2,10 +2,13 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import cesium from "vite-plugin-cesium";
 
+/** Vitest sets VITEST=true — skip vite-plugin-cesium in tests (CI frontend-test); tests do not load Cesium. */
+const isVitest = process.env.VITEST === "true";
+
 export default defineConfig({
   // Loads repo-root .env — only vars prefixed VITE_ are exposed to client code as import.meta.env.VITE_*
   envDir: "..",
-  plugins: [react(), cesium()],
+  plugins: isVitest ? [react()] : [react(), cesium()],
   server: {
     port: 5173,
     // Listen on all interfaces; keep HMR on localhost so ws://localhost:5173 matches a typical browser URL
