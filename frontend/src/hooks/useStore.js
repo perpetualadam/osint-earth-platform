@@ -5,6 +5,8 @@ export const useStore = create((set) => ({
   layers: {
     satellite: true,
     sentinel2: false,
+    nasa_modis: false,
+    nasa_blue_marble: false,
     aircraft: true,
     ships: true,
     wildfires: true,

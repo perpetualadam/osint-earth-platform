@@ -91,6 +91,37 @@ const CONTEXT_LAYER_MAP = {
 
 const ESRI_CREDIT = new Credit("Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics");
 const OSM_CREDIT = new Credit("&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>");
+const NASA_MODIS_CREDIT = new Credit(
+  '<a href="https://wiki.earthdata.nasa.gov/display/GIBS">NASA GIBS</a> · MODIS Terra true color (daily)'
+);
+const NASA_BLUE_MARBLE_CREDIT = new Credit(
+  '<a href="https://wiki.earthdata.nasa.gov/display/GIBS">NASA GIBS</a> · Blue Marble Next Generation'
+);
+
+/** Recent UTC calendar day for MODIS (product lags; avoids empty tiles). */
+function nasaModisDateString() {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() - 2);
+  return d.toISOString().slice(0, 10);
+}
+
+function createNasaModisImageryProvider() {
+  const dateStr = nasaModisDateString();
+  return new UrlTemplateImageryProvider({
+    url: `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${dateStr}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`,
+    maximumLevel: 9,
+    credit: NASA_MODIS_CREDIT,
+  });
+}
+
+function createNasaBlueMarbleImageryProvider() {
+  return new UrlTemplateImageryProvider({
+    url: "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_NextGeneration/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg",
+    maximumLevel: 8,
+    credit: NASA_BLUE_MARBLE_CREDIT,
+  });
+}
 
 /* Cesium billboards require rgb() not hex in SVGs - hex causes black rendering */
 const PLANE_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
@@ -345,7 +376,7 @@ const GlobeViewer = forwardRef((_props, ref) => {
 
     const viewer = new Viewer(containerRef.current, {
       baseLayerPicker: false,
-      geocoder: true,
+      geocoder: false,
       homeButton: false,
       sceneModePicker: false,
       navigationHelpButton: false,
@@ -480,11 +511,64 @@ const GlobeViewer = forwardRef((_props, ref) => {
   useEffect(() => {
     const img = imageryRef.current;
     if (!img.satellite) return;
-    const isSatellite = layers.satellite;
-    img.satellite.show = isSatellite;
-    img.labels.show = isSatellite;
-    img.street.show = !isSatellite;
-  }, [layers.satellite]);
+    const nasaBase = layers.nasa_modis ? "modis" : layers.nasa_blue_marble ? "blueMarble" : null;
+    const esriSatOn = layers.satellite && !nasaBase;
+    const anySatLike = layers.satellite || nasaBase;
+    img.satellite.show = esriSatOn;
+    img.labels.show = anySatLike;
+    img.street.show = !anySatLike;
+  }, [layers.satellite, layers.nasa_modis, layers.nasa_blue_marble]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const img = imageryRef.current;
+    if (!viewer || viewer.isDestroyed() || !img.satellite) return;
+
+    const kind = layers.nasa_modis ? "modis" : layers.nasa_blue_marble ? "blueMarble" : null;
+
+    if (!kind) {
+      if (img.nasaGibs) {
+        viewer.imageryLayers.remove(img.nasaGibs, true);
+        img.nasaGibs = null;
+        img.nasaGibsKind = undefined;
+        img.nasaGibsDate = undefined;
+      }
+      return undefined;
+    }
+
+    const needRecreate =
+      !img.nasaGibs ||
+      img.nasaGibsKind !== kind ||
+      (kind === "modis" && img.nasaGibsDate !== nasaModisDateString());
+
+    if (needRecreate) {
+      if (img.nasaGibs) {
+        viewer.imageryLayers.remove(img.nasaGibs, true);
+        img.nasaGibs = null;
+      }
+      const provider =
+        kind === "modis" ? createNasaModisImageryProvider() : createNasaBlueMarbleImageryProvider();
+      img.nasaGibs = viewer.imageryLayers.addImageryProvider(provider, 0);
+      img.nasaGibs.show = true;
+      img.nasaGibsKind = kind;
+      img.nasaGibsDate = kind === "modis" ? nasaModisDateString() : null;
+    } else if (img.nasaGibs) {
+      img.nasaGibs.show = true;
+    }
+
+    return () => {
+      const v = viewerRef.current;
+      const ir = imageryRef.current;
+      if (ir.nasaGibs && v && !v.isDestroyed()) {
+        try {
+          v.imageryLayers.remove(ir.nasaGibs, true);
+        } catch (_) {}
+        ir.nasaGibs = null;
+        ir.nasaGibsKind = undefined;
+        ir.nasaGibsDate = undefined;
+      }
+    };
+  }, [layers.nasa_modis, layers.nasa_blue_marble]);
 
   useEffect(() => {
     const viewer = viewerRef.current;

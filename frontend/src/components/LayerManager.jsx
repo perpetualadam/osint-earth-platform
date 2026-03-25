@@ -9,6 +9,20 @@ const LAYER_GROUPS = [
     layers: [
       { key: "satellite", label: "Satellite View", cacheField: null },
       { key: "sentinel2", label: "Sentinel-2 (ESA)", cacheField: null, requiresIon: true },
+      {
+        key: "nasa_modis",
+        label: "NASA MODIS (daily)",
+        cacheField: null,
+        tooltip:
+          "Free NASA GIBS: MODIS Terra true color, ~250 m, max zoom 9. Uses a recent UTC day (may be cloudy or have gaps).",
+      },
+      {
+        key: "nasa_blue_marble",
+        label: "NASA Blue Marble",
+        cacheField: null,
+        tooltip:
+          "Free NASA GIBS: static Blue Marble Next Generation composite (no clouds). Max zoom 8. Not live satellite. If MODIS daily is also checked, MODIS is shown first.",
+      },
     ],
   },
   {
@@ -62,7 +76,8 @@ const LAYER_GROUPS = [
         key: "telegram",
         label: "Telegram posts",
         cacheField: null,
-        tooltip: "Geocoded channel posts (ingest + TELEGRAM_SESSION_STRING or interactive login). API: /api/telegram/geojson.",
+        tooltip:
+          "Geocoded posts as map pins (ingest + session). Posts without coordinates: open the blue chip “Telegram — text only (no map)” at the top-right of the globe.",
       },
     ],
   },

@@ -1,6 +1,8 @@
 const LAYER_KEYS = [
   "satellite",
   "sentinel2",
+  "nasa_modis",
+  "nasa_blue_marble",
   "aircraft",
   "ships",
   "wildfires",

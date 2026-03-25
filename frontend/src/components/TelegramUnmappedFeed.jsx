@@ -29,7 +29,7 @@ export default function TelegramUnmappedFeed() {
   postsLenRef.current = posts.length;
 
   useEffect(() => {
-    if (!open || !telegramOn) return;
+    if (!open) return;
     let cancelled = false;
     offlineApi.getTelegramUnmappedChannels().then((d) => {
       if (!cancelled) setChannels(Array.isArray(d.channels) ? d.channels : []);
@@ -37,7 +37,7 @@ export default function TelegramUnmappedFeed() {
     return () => {
       cancelled = true;
     };
-  }, [open, telegramOn]);
+  }, [open]);
 
   const fetchPage = useCallback(
     async (append, channelOverride) => {
@@ -95,19 +95,20 @@ export default function TelegramUnmappedFeed() {
     });
   };
 
-  if (!telegramOn) return null;
-
   return (
-    <div className="tg-unmapped-feed">
+    <div className="tg-unmapped-feed" role="region" aria-label="Telegram posts without map location">
       <details open={open} onToggle={onToggle}>
         <summary className="tg-unmapped-summary">
-          Telegram — no map location
+          Telegram — text only (no map)
           {total > 0 && <span className="tg-unmapped-count"> ({total})</span>}
         </summary>
         <div className="tg-unmapped-body">
           <div className="tg-unmapped-toolbar">
             <p className="tg-unmapped-hint">
-              Posts with no map point. All channels: sorted A→Z by username, then newest first. Use the menu to show one channel.
+              Ingested posts that are not geocoded (they never appear as pins). Sorted by channel name, then newest.
+              {!telegramOn && (
+                <span className="tg-unmapped-warn"> Turn on “Telegram posts” in Layers to also load geocoded pins on the globe.</span>
+              )}
             </p>
             <button
               type="button"
@@ -183,11 +184,19 @@ export default function TelegramUnmappedFeed() {
       <style>{`
         .tg-unmapped-feed {
           position: absolute;
+          top: 12px;
           right: 8px;
-          bottom: 100px;
-          z-index: 10;
+          bottom: auto;
+          z-index: 35;
           font-size: 12px;
           max-width: min(360px, 92vw);
+          pointer-events: auto;
+        }
+        .tg-unmapped-warn {
+          display: block;
+          margin-top: 6px;
+          color: #fbbf24;
+          font-size: 10px;
         }
         .tg-unmapped-feed details { margin: 0; }
         .tg-unmapped-summary {
@@ -360,6 +369,7 @@ export default function TelegramUnmappedFeed() {
         .light-theme .tg-unmapped-channel-title { color: #64748b; }
         .light-theme .tg-unmapped-snippet { color: #334155; }
         .light-theme .tg-unmapped-time { color: #64748b; }
+        .light-theme .tg-unmapped-warn { color: #b45309; }
       `}</style>
     </div>
   );
